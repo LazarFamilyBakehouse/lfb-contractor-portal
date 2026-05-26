@@ -17,20 +17,26 @@ create extension if not exists "pgcrypto";   -- gen_random_uuid()
 -- ─── 1. Helper: is_admin() ──────────────────────────────────────────────────
 -- Used in every RLS policy below. Cached per-statement for speed.
 
+-- Note: language plpgsql (not sql) because plpgsql defers body validation
+-- until call time. With `language sql`, Postgres validates references at
+-- CREATE time, which would fail because c_contractors doesn't exist yet
+-- in a fresh migration run.
 create or replace function public.c_is_admin()
 returns boolean
-language sql
+language plpgsql
 security definer
 stable
 set search_path = public
 as $$
-  select exists (
+begin
+  return exists (
     select 1
     from public.c_contractors
     where user_id = auth.uid()
       and role = 'admin'
       and status = 'active'
   );
+end;
 $$;
 
 -- ─── 2. Helper: c_set_updated_at() trigger ─────────────────────────────────
@@ -898,9 +904,4 @@ create policy "c_docs_self_delete" on storage.objects
 --   3. Run this insert in the SQL editor, replacing <UUID>:
 --
 --      insert into public.c_contractors
---        (user_id, role, first_name, last_name, email, pay_rate, status)
---      values
---        ('<UUID>', 'admin', 'Jake', 'Lazar', 'info@lazarfamilybakehouse.com', 0, 'active');
---
---   4. Repeat for Victoria once you send her email address.
--- ============================================================================
+--        (user_id, role, first_name, last_name, email, pay_r
