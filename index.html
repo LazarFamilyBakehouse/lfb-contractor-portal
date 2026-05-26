@@ -1,0 +1,3099 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
+<meta name="theme-color" content="#6b8f5e" />
+<!-- Security headers (GitHub Pages can't set HTTP response headers, so we use meta tags) -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.emailjs.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.emailjs.com" />
+<meta http-equiv="X-Content-Type-Options" content="nosniff" />
+<meta name="referrer" content="strict-origin-when-cross-origin" />
+<title>Contractor Portal – Lazar Family Bakehouse</title>
+<link rel="icon" type="image/x-icon" href="favicon.ico"/>
+<link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png"/>
+<link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16.png"/>
+<link rel="apple-touch-icon" sizes="180x180" href="images/favicon-180.png"/>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Nunito:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!--
+  EmailJS SDK is included so future activation is one uncomment away.
+  Until EmailJS credentials are wired in (see CONFIG block in the script), the
+  notify() function below is a console-log no-op. Nothing is sent.
+-->
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<style>
+/* ============================================================
+   TOKENS
+   Inherited from the LFB Wholesale Portal palette, with the
+   primary accent swapped from red to sage green so this portal
+   is visually distinct at a glance.
+   ============================================================ */
+:root {
+  --cream:        #fdf6ee;
+  --cream-dk:     #f3ebe0;
+  --cream-lt:     #fef9f3;
+  --tan:          #e4d8c8;
+  --tan-dk:       #cfc0ab;
+  --brown-lt:     #8b6914;
+  --brown:        #3a2518;
+  --brown-dk:     #2d1b0e;
+
+  /* PRIMARY ACCENT (was red in wholesale portal — swapped to sage here) */
+  --accent:       #6b8f5e;
+  --accent-dk:    #527a46;
+  --accent-lt:    #8ab07d;
+
+  --gold:         #8b6914;
+  --gold-lt:      #a07b1a;
+  --white:        #ffffff;
+  --shadow:       rgba(58,37,24,.08);
+  --danger:       #c0392b;
+  --danger-dk:    #962d22;
+  --muted:        #5c4a3a;
+  --info:         #2e86c1;
+  --info-bg:      #E8F4FD;
+  --warn:         #d4ac0d;
+  --warn-bg:      #FEF9E7;
+  --success:      #1e8449;
+  --success-bg:   #EAFAF1;
+  --urgent:       #e74c3c;
+  --urgent-bg:    #FDEDEC;
+}
+
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { font-size:16px; }
+body {
+  font-family:'Nunito',sans-serif;
+  background:var(--cream);
+  color:var(--brown-dk);
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  text-rendering:optimizeLegibility;
+}
+
+/* ============================================================
+   CONTRACTOR PORTAL TOP BANNER
+   Solid sage-green bar, present on every screen incl. login.
+   This is the at-a-glance differentiator from the (red-accented)
+   wholesale portal.
+   ============================================================ */
+.portal-banner {
+  background:var(--accent);
+  color:var(--white);
+  text-align:center;
+  font-family:'Nunito',sans-serif;
+  font-size:.72rem;
+  font-weight:700;
+  letter-spacing:.22em;
+  text-transform:uppercase;
+  padding:6px 8px;
+  position:sticky;
+  top:0;
+  z-index:200;
+  border-bottom:1px solid rgba(0,0,0,.08);
+}
+
+/* ============================================================
+   LOGIN
+   ============================================================ */
+#login-screen {
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  background:var(--cream);
+  padding:0 0 24px;
+}
+#login-screen .login-inner {
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  width:100%;
+  padding:32px 18px;
+}
+.login-logo { text-align:center; margin-bottom:28px; }
+.login-logo .mark {
+  width:64px; height:64px;
+  background:var(--brown-dk);
+  border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:30px; color:var(--cream);
+  margin:0 auto 12px;
+}
+.login-logo h1 {
+  font-family:'Playfair Display',serif;
+  font-size:1.7rem;
+  color:var(--brown-dk);
+  letter-spacing:.02em;
+}
+.login-logo p {
+  color:var(--muted);
+  font-size:.74rem;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  margin-top:6px;
+}
+.login-card {
+  background:var(--white);
+  border-radius:6px;
+  padding:30px 24px;
+  width:100%;
+  max-width:400px;
+  box-shadow:0 4px 24px rgba(59,35,20,.10);
+  border-top:3px solid var(--accent);
+}
+.lf { display:flex; flex-direction:column; gap:5px; margin-bottom:14px; }
+.lf label {
+  font-size:.78rem; font-weight:700; text-transform:uppercase;
+  letter-spacing:.08em; color:var(--brown);
+}
+.lf input, .lf select {
+  padding:13px 14px;
+  border:1px solid var(--tan);
+  border-radius:4px;
+  font-family:'Nunito',sans-serif;
+  font-size:1rem;        /* 16px+ prevents iOS auto-zoom on focus */
+  background:var(--cream);
+  color:var(--brown-dk);
+  transition:border-color .2s;
+}
+.lf input:focus, .lf select:focus { outline:none; border-color:var(--accent); }
+.login-btn {
+  width:100%;
+  padding:14px;
+  background:var(--accent);
+  color:#fff; border:none; border-radius:4px;
+  font-family:'Nunito',sans-serif;
+  font-size:.95rem; font-weight:700; letter-spacing:.02em;
+  cursor:pointer; transition:background .2s; margin-top:6px;
+  min-height:48px;       /* iOS tap target */
+}
+.login-btn:hover { background:var(--accent-dk); }
+.login-btn:disabled { opacity:.6; cursor:not-allowed; }
+.login-error { color:var(--danger); font-size:.85rem; text-align:center; margin-top:12px; }
+.login-error:empty { display:none; }
+.login-hint { color:var(--muted); font-size:.78rem; text-align:center; margin-top:14px; }
+.login-link {
+  background:none; border:none; color:var(--accent);
+  font-size:.78rem; cursor:pointer; text-decoration:underline;
+  font-family:'Nunito',sans-serif; padding:6px 8px;
+}
+
+/* ============================================================
+   APP SHELL
+   ============================================================ */
+#app { display:none; flex-direction:column; min-height:100vh; }
+header {
+  background:var(--white);
+  color:var(--brown-dk);
+  padding:12px 16px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  border-bottom:2px solid var(--accent);
+  gap:10px;
+}
+.hdr-text h1 {
+  font-family:'Playfair Display',serif;
+  font-size:1.15rem;
+  color:var(--brown-dk);
+  letter-spacing:.01em;
+  line-height:1.15;
+}
+.hdr-text p {
+  font-size:.66rem;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--muted);
+  margin-top:2px;
+}
+.hdr-right { display:flex; align-items:center; gap:8px; }
+.hdr-user { font-size:.74rem; color:var(--muted); text-align:right; line-height:1.2; }
+.hdr-user strong { display:block; color:var(--brown-dk); font-weight:700; font-size:.82rem; }
+.btn-logout {
+  background:transparent;
+  border:1px solid var(--tan);
+  color:var(--brown);
+  padding:8px 12px;
+  border-radius:4px;
+  cursor:pointer;
+  font-family:'Nunito',sans-serif;
+  font-size:.78rem;
+  min-height:36px;
+}
+.btn-logout:hover { background:var(--cream-dk); color:var(--brown-dk); }
+
+nav {
+  background:var(--white);
+  border-bottom:1px solid var(--tan);
+  display:flex;
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+  position:sticky;
+  top:30px;             /* sits under the portal banner */
+  z-index:50;
+}
+nav button {
+  background:none; border:none;
+  color:var(--brown);
+  font-family:'Nunito',sans-serif;
+  font-size:.86rem; font-weight:400;
+  padding:14px 16px;
+  cursor:pointer;
+  border-bottom:3px solid transparent;
+  transition:all .15s;
+  white-space:nowrap;
+  min-height:48px;
+}
+nav button:hover { color:var(--brown-dk); }
+nav button.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:700; }
+
+main { padding:18px 14px 60px; max-width:1100px; margin:0 auto; flex:1; width:100%; }
+.section { display:none; }
+.section.active { display:block; }
+
+/* ============================================================
+   TYPOGRAPHY
+   ============================================================ */
+.page-h {
+  font-family:'Playfair Display',serif;
+  font-size:1.5rem; font-weight:700;
+  color:var(--brown-dk); margin-bottom:2px;
+}
+.page-sub {
+  color:var(--muted);
+  font-size:.74rem; font-weight:700;
+  text-transform:uppercase; letter-spacing:.12em;
+  margin-bottom:18px;
+}
+
+/* ============================================================
+   PANELS
+   ============================================================ */
+.panel {
+  background:var(--white);
+  border:1px solid var(--tan);
+  border-radius:4px;
+  padding:18px;
+  margin-bottom:18px;
+}
+.panel-title {
+  font-family:'Playfair Display',serif;
+  font-size:1.05rem; font-weight:600;
+  color:var(--brown-dk);
+  margin-bottom:12px; padding-bottom:9px;
+  border-bottom:1px solid var(--tan);
+}
+.panel-actions { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+
+.stats-grid {
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:10px;
+  margin-bottom:18px;
+}
+.stat-card {
+  background:var(--white);
+  border:1px solid var(--tan);
+  border-radius:4px;
+  padding:14px;
+  border-top:3px solid var(--accent);
+}
+.stat-card .sl {
+  font-size:.7rem; text-transform:uppercase;
+  letter-spacing:.1em; color:var(--muted);
+}
+.stat-card .sv {
+  font-family:'Playfair Display',serif;
+  font-size:1.6rem; font-weight:700;
+  color:var(--brown-dk); margin-top:4px;
+  word-break:break-word;
+}
+.stat-card .sh {
+  font-size:.72rem; color:var(--muted); margin-top:2px;
+}
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+.btn {
+  display:inline-flex; align-items:center; justify-content:center;
+  gap:6px;
+  padding:11px 16px;
+  border:none; border-radius:4px;
+  font-family:'Nunito',sans-serif;
+  font-size:.88rem; font-weight:600; letter-spacing:.01em;
+  cursor:pointer; transition:all .15s;
+  min-height:44px;
+  text-decoration:none;
+}
+.btn-primary { background:var(--accent); color:#fff; }
+.btn-primary:hover { background:var(--accent-dk); }
+.btn-gold { background:var(--gold); color:var(--white); }
+.btn-gold:hover { background:var(--brown); }
+.btn-outline { background:transparent; border:1px solid var(--tan); color:var(--brown); }
+.btn-outline:hover { background:var(--cream-dk); }
+.btn-danger { background:var(--danger); color:white; }
+.btn-danger:hover { background:var(--danger-dk); }
+.btn-sm { padding:6px 12px; font-size:.78rem; min-height:32px; }
+.btn-block { width:100%; }
+.btn[disabled] { opacity:.55; cursor:not-allowed; }
+
+/* ============================================================
+   FORMS
+   ============================================================ */
+.form-row {
+  display:grid;
+  grid-template-columns:1fr;
+  gap:12px;
+  margin-bottom:12px;
+}
+.fg { display:flex; flex-direction:column; gap:4px; }
+.fg label {
+  font-size:.76rem; font-weight:700; text-transform:uppercase;
+  letter-spacing:.08em; color:var(--brown);
+}
+.fg input, .fg select, .fg textarea {
+  padding:11px 12px;
+  border:1px solid var(--tan);
+  border-radius:4px;
+  font-family:'Nunito',sans-serif;
+  font-size:1rem;        /* 16px+ prevents iOS auto-zoom */
+  background:var(--cream);
+  color:var(--brown-dk);
+  transition:border-color .2s, background .2s;
+}
+.fg input:focus, .fg select:focus, .fg textarea:focus {
+  outline:none; border-color:var(--accent); background:var(--white);
+}
+.fg textarea { resize:vertical; min-height:80px; font-family:'Nunito',sans-serif; }
+.fg input[readonly] { background:var(--cream-dk); color:var(--muted); cursor:not-allowed; }
+.fg .help { font-size:.74rem; color:var(--muted); margin-top:2px; }
+.form-actions { display:flex; gap:10px; margin-top:8px; flex-wrap:wrap; }
+
+/* ============================================================
+   TABLES
+   ============================================================ */
+.tbl-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+table { width:100%; border-collapse:collapse; font-size:.86rem; }
+thead { background:var(--brown-dk); color:var(--cream); }
+thead th {
+  padding:10px 12px; text-align:left;
+  font-size:.72rem; letter-spacing:.08em; text-transform:uppercase;
+  white-space:nowrap;
+}
+tbody tr { border-bottom:1px solid var(--tan); }
+tbody tr:hover { background:var(--cream-dk); }
+tbody td { padding:10px 12px; color:var(--brown-dk); vertical-align:top; }
+.empty-row { text-align:center; color:var(--muted); font-style:italic; padding:22px !important; }
+
+/* Card-list alternative to tables on mobile */
+.card-list { display:flex; flex-direction:column; gap:10px; }
+.card {
+  background:var(--white);
+  border:1px solid var(--tan);
+  border-radius:4px;
+  padding:14px;
+  border-left:3px solid var(--accent);
+}
+.card-hd { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:8px; flex-wrap:wrap; }
+.card-hd h3 { font-family:'Playfair Display',serif; font-size:1.02rem; color:var(--brown-dk); line-height:1.2; }
+.card-sub { font-size:.78rem; color:var(--muted); margin-top:2px; }
+.card-body { font-size:.88rem; color:var(--brown-dk); }
+.card-meta { display:flex; gap:14px; flex-wrap:wrap; font-size:.78rem; color:var(--muted); margin-top:8px; }
+.card-meta strong { color:var(--brown-dk); }
+.card-actions { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+.card-actions .btn { flex:1; min-width:120px; }
+
+/* ============================================================
+   BADGES
+   ============================================================ */
+.badge {
+  display:inline-block; padding:3px 9px; border-radius:3px;
+  font-size:.72rem; font-weight:600; letter-spacing:.02em;
+  white-space:nowrap;
+}
+.b-active     { background:#d4edda; color:#155724; }
+.b-pending    { background:#fff3cd; color:#856404; }
+.b-approved   { background:#d4edda; color:#155724; }
+.b-paid       { background:#cce5ff; color:#004085; }
+.b-released   { background:var(--tan); color:var(--brown); }
+.b-cancelled  { background:#f8d7da; color:#721c24; }
+.b-completed  { background:#d1ecf1; color:#0c5460; }
+.b-inactive   { background:var(--tan); color:var(--brown); }
+.b-warn       { background:#fff3cd; color:#856404; }
+.b-danger     { background:#f8d7da; color:#721c24; }
+
+/* ============================================================
+   MODALS
+   ============================================================ */
+.modal-overlay {
+  display:none;
+  position:fixed; inset:0;
+  background:rgba(0,0,0,.55);
+  z-index:1000;
+  align-items:flex-end;        /* slide-up sheet on mobile */
+  justify-content:center;
+  padding:0;
+}
+.modal-overlay.open { display:flex; }
+.modal {
+  background:var(--white);
+  border-radius:8px 8px 0 0;
+  padding:20px 18px 24px;
+  width:100%;
+  max-width:640px;
+  max-height:94vh;
+  overflow-y:auto;
+  box-shadow:0 -4px 24px rgba(20,20,19,.18);
+}
+.modal-title {
+  font-family:'Playfair Display',serif;
+  font-size:1.15rem;
+  margin-bottom:14px;
+  color:var(--brown-dk);
+}
+.modal-actions {
+  display:flex; gap:10px;
+  margin-top:18px;
+  flex-direction:column;
+}
+.modal-actions .btn { width:100%; }
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+#toast {
+  position:fixed; bottom:20px; left:50%; transform:translate(-50%, 80px);
+  background:var(--brown-dk);
+  color:var(--cream);
+  padding:12px 20px;
+  border-radius:6px;
+  font-size:.9rem;
+  box-shadow:0 4px 16px rgba(20,20,19,.20);
+  opacity:0; transition:all .25s;
+  z-index:9999;
+  border-left:3px solid var(--accent);
+  max-width:90%;
+  text-align:center;
+}
+#toast.show { transform:translate(-50%, 0); opacity:1; }
+#toast.error { border-left-color:var(--danger); }
+
+/* ============================================================
+   NOTIFICATION BANNERS (info / warning / urgent)
+   ============================================================ */
+.notif-item {
+  padding:10px 16px;
+  display:flex; align-items:center; gap:10px;
+  font-size:.86rem;
+  border-bottom:1px solid rgba(0,0,0,.07);
+}
+.notif-info    { background:var(--info-bg);    color:#1a5276; border-left:4px solid var(--info); }
+.notif-warning { background:var(--warn-bg);    color:#7d6608; border-left:4px solid var(--warn); }
+.notif-urgent  { background:var(--urgent-bg);  color:#922b21; border-left:4px solid var(--urgent); }
+.notif-success { background:var(--success-bg); color:#1e8449; border-left:4px solid var(--success); }
+.notif-text { flex:1; }
+.notif-dismiss { background:none; border:none; cursor:pointer; opacity:.5; font-size:1.1rem; padding:2px 8px; }
+.notif-dismiss:hover { opacity:1; }
+
+/* ============================================================
+   AVAILABILITY CALENDAR
+   ============================================================ */
+.cal-wrap { background:var(--white); border:1px solid var(--tan); border-radius:4px; padding:14px; margin-bottom:18px; }
+.cal-header {
+  display:flex; align-items:center; justify-content:space-between;
+  gap:8px; margin-bottom:10px;
+}
+.cal-month-label {
+  font-family:'Playfair Display',serif;
+  font-size:1.1rem; color:var(--brown-dk);
+  flex:1; text-align:center;
+}
+.cal-nav-btn {
+  background:var(--cream-dk); border:none; color:var(--brown-dk);
+  font-size:1.1rem; width:36px; height:36px; border-radius:4px;
+  cursor:pointer; font-weight:700;
+}
+.cal-nav-btn:hover { background:var(--tan); }
+.cal-dow-row {
+  display:grid; grid-template-columns:repeat(7,1fr); gap:2px;
+  font-size:.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em;
+  text-align:center; padding-bottom:4px; font-weight:700;
+}
+.cal-grid {
+  display:grid; grid-template-columns:repeat(7,1fr); gap:3px;
+}
+.cal-day {
+  aspect-ratio:1;
+  background:var(--cream-lt);
+  border:1px solid var(--tan);
+  border-radius:4px;
+  display:flex; flex-direction:column;
+  align-items:flex-start; justify-content:flex-start;
+  padding:4px 5px;
+  cursor:pointer;
+  position:relative;
+  transition:background .15s, border-color .15s;
+  font-size:.76rem;
+  color:var(--brown-dk);
+  user-select:none;
+  min-height:44px;
+}
+.cal-day:hover { border-color:var(--accent); }
+.cal-day.cd-blank { background:transparent; border-color:transparent; cursor:default; }
+.cal-day.cd-past  { opacity:.45; cursor:not-allowed; }
+.cal-day.cd-today { border:2px solid var(--brown-dk); }
+.cal-day.cd-free      { background:#dcefd5; border-color:var(--accent); }
+.cal-day.cd-busy      { background:#fadbd8; border-color:var(--danger); color:var(--danger-dk); }
+.cal-day.cd-tentative { background:#fff3cd; border-color:#d4ac0d; color:#7d6608; }
+.cal-day.cd-selected  { outline:3px solid var(--brown-dk); outline-offset:-1px; }
+.cal-day-num { font-weight:700; font-size:.86rem; }
+.cal-day-meta {
+  font-size:.62rem; color:inherit; margin-top:auto;
+  align-self:stretch; text-align:right; opacity:.85;
+}
+.cal-day .pip {
+  width:6px; height:6px; border-radius:50%;
+  background:var(--accent); position:absolute; top:4px; right:4px;
+}
+.cal-legend {
+  display:flex; gap:14px; flex-wrap:wrap;
+  font-size:.76rem; color:var(--muted);
+  margin-top:10px; padding-top:10px;
+  border-top:1px solid var(--tan);
+}
+.cal-legend-swatch {
+  display:inline-block; width:14px; height:14px;
+  border:1px solid var(--tan); border-radius:3px;
+  vertical-align:middle; margin-right:4px;
+}
+.cal-toolbar {
+  display:flex; gap:8px; flex-wrap:wrap;
+  margin-top:12px;
+}
+.cal-toolbar .btn { flex:1; min-width:120px; }
+
+/* Admin heatmap variant */
+.cal-day.cd-heat .cd-counts {
+  font-size:.6rem; color:var(--brown-dk);
+  align-self:stretch; text-align:right; opacity:.9;
+  font-weight:700;
+}
+.cal-day.cd-heat .free-c { color:var(--accent-dk); }
+.cal-day.cd-heat .busy-c { color:var(--danger-dk); }
+
+/* ============================================================
+   DOCUMENT UPLOADS
+   ============================================================ */
+.doc-list { display:flex; flex-direction:column; gap:8px; }
+.doc-item {
+  display:flex; align-items:center; gap:10px; padding:10px 12px;
+  background:var(--cream); border:1px solid var(--tan); border-radius:4px;
+}
+.doc-item .doc-icon { font-size:1.3rem; }
+.doc-item .doc-meta { flex:1; min-width:0; }
+.doc-item .doc-name { font-weight:700; font-size:.88rem; color:var(--brown-dk); word-break:break-word; }
+.doc-item .doc-sub { font-size:.72rem; color:var(--muted); }
+.doc-item .doc-actions { display:flex; gap:4px; }
+.doc-upload-zone {
+  border:2px dashed var(--tan-dk);
+  border-radius:4px;
+  padding:18px;
+  text-align:center;
+  background:var(--cream);
+  cursor:pointer;
+}
+.doc-upload-zone:hover { border-color:var(--accent); background:var(--cream-dk); }
+
+/* ============================================================
+   AUDIT LOG
+   ============================================================ */
+.audit-item {
+  padding:10px 12px;
+  border-bottom:1px solid var(--tan);
+  font-size:.84rem;
+}
+.audit-action {
+  display:inline-block; background:var(--cream-dk); color:var(--brown-dk);
+  padding:1px 7px; border-radius:3px; font-size:.7rem;
+  font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+  margin-right:6px;
+}
+.audit-time { color:var(--muted); font-size:.74rem; }
+.audit-diff { font-family:ui-monospace,Menlo,monospace; font-size:.74rem; margin-top:4px; color:var(--muted); white-space:pre-wrap; }
+
+/* ============================================================
+   MEDIA: tablet+
+   ============================================================ */
+@media(min-width:640px) {
+  header { padding:14px 28px; }
+  .hdr-text h1 { font-size:1.45rem; }
+  .hdr-text p { font-size:.72rem; }
+  nav { top:30px; }
+  nav button { padding:14px 22px; font-size:.88rem; }
+  main { padding:24px 28px 80px; }
+  .page-h { font-size:1.7rem; }
+  .stats-grid { grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); }
+  .form-row { grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); }
+  .modal-overlay { align-items:center; padding:24px; }
+  .modal { border-radius:6px; max-height:90vh; }
+  .modal-actions { flex-direction:row; justify-content:flex-end; }
+  .modal-actions .btn { width:auto; }
+  .card-actions .btn { flex:0 0 auto; }
+}
+
+@media print {
+  .portal-banner, header, nav, .form-actions, .modal-actions, .btn { display:none !important; }
+  body { background:#fff !important; }
+  .panel { border:none; padding:0; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     LOGIN SCREEN
+     ============================================================ -->
+<div id="login-screen">
+  <div class="portal-banner">Contractor Portal</div>
+  <div class="login-inner">
+    <div class="login-logo">
+      <div class="mark">🥖</div>
+      <h1>Lazar Family Bakehouse</h1>
+      <p>Contractor Portal</p>
+    </div>
+    <div class="login-card">
+      <div class="lf">
+        <label for="login-email">Email</label>
+        <input id="login-email" type="email" autocomplete="username" inputmode="email" autocapitalize="none" />
+      </div>
+      <div class="lf">
+        <label for="login-password">Password</label>
+        <input id="login-password" type="password" autocomplete="current-password" />
+      </div>
+      <button class="login-btn" id="login-submit" onclick="signIn()">Sign In</button>
+      <div class="login-error" id="login-error"></div>
+      <div class="login-hint">
+        <button class="login-link" onclick="sendResetEmail()">Forgot password?</button>
+      </div>
+      <div class="login-hint" style="margin-top:18px; padding-top:14px; border-top:1px solid var(--tan); line-height:1.5;">
+        First time here? Check your email for the invite link from Lazar Family Bakehouse. If you didn't receive one, reach out to admin.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     APP SHELL
+     ============================================================ -->
+<div id="app">
+  <div class="portal-banner">Contractor Portal</div>
+  <header>
+    <div class="hdr-text">
+      <h1>Lazar Family Bakehouse</h1>
+      <p id="hdr-subtitle">Contractor Portal</p>
+    </div>
+    <div class="hdr-right">
+      <div class="hdr-user">
+        <strong id="hdr-user-name"></strong>
+        <span id="hdr-user-role"></span>
+      </div>
+      <button class="btn-logout" onclick="signOut()">Sign Out</button>
+    </div>
+  </header>
+  <div id="notif-banner"></div>
+  <nav id="main-nav"></nav>
+  <main id="main-content"></main>
+</div>
+
+<!-- ============================================================
+     GENERIC MODAL CONTAINER
+     We use one shared modal element rather than a separate
+     element per modal (the wholesale portal uses one per feature
+     — for the contractor portal, the smaller surface area lets
+     us share one).
+     ============================================================ -->
+<div class="modal-overlay" id="generic-modal">
+  <div class="modal">
+    <div class="modal-title" id="generic-modal-title"></div>
+    <div id="generic-modal-body"></div>
+    <div class="modal-actions" id="generic-modal-actions"></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     TOAST
+     ============================================================ -->
+<div id="toast"></div>
+
+<script>
+/* ============================================================
+   CONFIG
+   ============================================================ */
+// SUPABASE — same project as the wholesale portal (anon key is
+// safe to publish per Supabase design; RLS protects all data).
+const SUPABASE_URL  = 'https://ylvoswzsijigyezqvaat.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlsdm9zd3pzaWppZ3llenF2YWF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2Mjk5MTAsImV4cCI6MjA4OTIwNTkxMH0.iA4QMZkxTsqArV3CgHb-YluiBeiIq5RppGV6kBe8G8g';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+// ─── EmailJS — PLACEHOLDERS ────────────────────────────────────
+// When the second EmailJS account is created (see docs/EMAILJS.md),
+// paste the credentials here and set EMAILJS_ENABLED to true.
+// Until then, notify() is a no-op (console-logs the intent).
+const EMAILJS_ENABLED = false;
+const EMAILJS_PUBLIC_KEY = 'PLACEHOLDER_PUBLIC_KEY';
+const EMAILJS_SERVICE_ID = 'PLACEHOLDER_SERVICE_ID';
+const EMAILJS_TEMPLATES = {
+  shift_new:         'PLACEHOLDER_TEMPLATE_shift_new',
+  signup_confirm:    'PLACEHOLDER_TEMPLATE_signup_confirm',
+  shift_released:    'PLACEHOLDER_TEMPLATE_shift_released',
+  hours_submitted:   'PLACEHOLDER_TEMPLATE_hours_submitted',
+  hours_approved:    'PLACEHOLDER_TEMPLATE_hours_approved',
+  shift_reminder:    'PLACEHOLDER_TEMPLATE_shift_reminder',
+  shift_cancelled:   'PLACEHOLDER_TEMPLATE_shift_cancelled',
+  availability_nudge:'PLACEHOLDER_TEMPLATE_availability_nudge'
+};
+const ADMIN_EMAIL = 'info@lazarfamilybakehouse.com'; // recipient for admin-facing emails
+const PORTAL_URL  = (typeof window !== 'undefined' && window.location.origin.startsWith('http'))
+  ? window.location.origin
+  : 'https://contractors.lazarfamilybakehouse.com';
+
+// Activate EmailJS only if enabled
+if (EMAILJS_ENABLED && window.emailjs) {
+  try { emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY }); }
+  catch (e) { console.warn('EmailJS init failed', e); }
+}
+
+/* ============================================================
+   GLOBAL STATE
+   ============================================================ */
+let session = null;       // { user, contractor, role: 'admin'|'contractor' }
+let _inactivityTimer = null;
+const INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000;  // 60 minutes
+const STORAGE_KEYS = {
+  dismissedNotifs: 'lfb_c_dismissed_notifs'
+};
+
+/* ============================================================
+   NOTIFY — single email/notification entry point (stub until
+   EmailJS is wired in).
+   ============================================================ */
+function notify(eventType, payload) {
+  // Standardised event types match EMAILJS_TEMPLATES keys.
+  if (!EMAILJS_ENABLED) {
+    console.log('[notify:stub]', eventType, payload);
+    return Promise.resolve({ stubbed: true });
+  }
+  const tplId = EMAILJS_TEMPLATES[eventType];
+  if (!tplId) return Promise.reject(new Error('Unknown event type: '+eventType));
+  // payload is expected to include to_email + template variables
+  return emailjs.send(EMAILJS_SERVICE_ID, tplId, payload)
+    .catch(err => { console.warn('[notify] send failed', eventType, err); return null; });
+}
+
+// Helper to broadcast (sequentially, with a small delay to be nice
+// to free-tier email rate limits).
+async function notifyMany(eventType, recipients, paramsFn) {
+  for (const r of recipients) {
+    const params = paramsFn(r);
+    await notify(eventType, params);
+    await sleep(450);
+  }
+}
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+function $(id){ return document.getElementById(id); }
+function v(id){ const el=$(id); return el ? el.value.trim() : ''; }
+function esc(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtCur(n){ return '$'+(Number(n)||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
+function fmtDate(d){
+  if (!d) return '—';
+  const [y,m,day] = String(d).split('T')[0].split('-');
+  return new Date(+y,+m-1,+day).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+}
+function fmtDateShort(d){
+  if (!d) return '—';
+  const [y,m,day] = String(d).split('T')[0].split('-');
+  return new Date(+y,+m-1,+day).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+}
+function fmtDay(d){
+  if (!d) return '';
+  const [y,m,day] = String(d).split('T')[0].split('-');
+  return new Date(+y,+m-1,+day).toLocaleDateString('en-US',{weekday:'long'});
+}
+function fmtTime(t){
+  if (!t) return '—';
+  const [h,m] = String(t).split(':');
+  const d = new Date();
+  d.setHours(+h, +m||0, 0, 0);
+  return d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+}
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function isoFromDate(d){
+  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function daysFromToday(iso){
+  const a=new Date(todayISO()+'T12:00:00');
+  const b=new Date(iso+'T12:00:00');
+  return Math.round((b-a)/(1000*60*60*24));
+}
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+function toast(msg, opts={}){
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = opts.error ? 'show error' : 'show';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=>t.className='', 2800);
+}
+
+function openModal(title, bodyHtml, actions){
+  $('generic-modal-title').textContent = title;
+  $('generic-modal-body').innerHTML = bodyHtml;
+  const ab = $('generic-modal-actions');
+  ab.innerHTML = '';
+  (actions||[]).forEach(a => {
+    const b = document.createElement('button');
+    b.className = 'btn '+(a.cls||'btn-outline');
+    b.textContent = a.label;
+    b.onclick = a.onClick || (()=>closeModal());
+    if (a.disabled) b.disabled = true;
+    ab.appendChild(b);
+  });
+  $('generic-modal').classList.add('open');
+}
+function closeModal(){ $('generic-modal').classList.remove('open'); }
+
+function resetInactivityTimer(){
+  clearTimeout(_inactivityTimer);
+  _inactivityTimer = setTimeout(()=>{
+    toast('Signed out — inactivity timeout', {error:true});
+    signOut();
+  }, INACTIVITY_TIMEOUT_MS);
+}
+['click','keydown','touchstart'].forEach(ev =>
+  document.addEventListener(ev, ()=>{ if (session) resetInactivityTimer(); }, {passive:true})
+);
+
+/* ============================================================
+   AUTH
+   ============================================================ */
+async function signIn() {
+  const btn = $('login-submit');
+  const err = $('login-error');
+  err.textContent = '';
+  const email = v('login-email').toLowerCase();
+  const password = v('login-password');
+  if (!email || !password) { err.textContent = 'Email and password are required.'; return; }
+  btn.disabled = true;
+  btn.textContent = 'Signing in…';
+  try {
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+
+    // Load the contractor row for this user.
+    const { data: me, error: meErr } = await sb.rpc('c_me');
+    if (meErr) throw meErr;
+    if (!me || !me.id) throw new Error('No contractor profile linked to this account. Contact admin.');
+    if (me.status !== 'active') throw new Error('Your account is not active. Contact admin.');
+
+    session = { user: data.user, contractor: me, role: me.role };
+    await bootApp();
+    resetInactivityTimer();
+  } catch (e) {
+    console.warn('Sign in error', e);
+    err.textContent = e.message || 'Sign in failed. Try again.';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign In';
+  }
+}
+
+async function signOut() {
+  clearTimeout(_inactivityTimer);
+  try { await sb.auth.signOut(); } catch (e) { /* swallow */ }
+  sb.removeAllChannels();
+  session = null;
+  $('app').style.display = 'none';
+  $('login-screen').style.display = 'flex';
+  $('login-password').value = '';
+  $('login-error').textContent = '';
+}
+
+async function sendResetEmail() {
+  const email = v('login-email').toLowerCase();
+  if (!email) { toast('Enter your email above first', {error:true}); return; }
+  try {
+    const { error } = await sb.auth.resetPasswordForEmail(email, {
+      redirectTo: PORTAL_URL
+    });
+    if (error) throw error;
+    toast('Check your email for a reset link');
+  } catch (e) {
+    toast(e.message || 'Could not send reset email', {error:true});
+  }
+}
+
+// Restore session on page load (if user is already signed in)
+async function tryRestoreSession() {
+  const { data } = await sb.auth.getSession();
+  if (!data.session) return;
+  try {
+    const { data: me, error: meErr } = await sb.rpc('c_me');
+    if (meErr || !me || !me.id) return;
+    if (me.status !== 'active') return;
+    session = { user: data.session.user, contractor: me, role: me.role };
+    await bootApp();
+    resetInactivityTimer();
+  } catch (e) {
+    console.warn('Restore session failed', e);
+  }
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+async function bootApp() {
+  $('login-screen').style.display = 'none';
+  $('app').style.display = 'flex';
+  const c = session.contractor;
+  $('hdr-user-name').textContent = `${c.first_name||''} ${c.last_name||''}`.trim() || c.email;
+  $('hdr-user-role').textContent = session.role === 'admin' ? 'Admin' : 'Contractor';
+  $('hdr-subtitle').textContent = session.role === 'admin' ? 'Admin Dashboard' : 'Contractor Portal';
+  buildNav();
+  buildContent();
+  const firstSection = session.role === 'admin' ? 'a-dashboard' : 'c-home';
+  showSection(firstSection);
+  setupRealtime();
+  renderNotifBanner();
+}
+
+/* ============================================================
+   NAV
+   ============================================================ */
+const ADMIN_SECTIONS = [
+  { id:'a-dashboard',    label:'Dashboard',    icon:'📊' },
+  { id:'a-shifts',       label:'Shifts',       icon:'🍞' },
+  { id:'a-availability', label:'Availability', icon:'📅' },
+  { id:'a-approvals',    label:'Approvals',    icon:'✅' },
+  { id:'a-payments',     label:'Payments',     icon:'💵' },
+  { id:'a-contractors',  label:'Contractors',  icon:'👥' },
+  { id:'a-audit',        label:'Audit',        icon:'📜' },
+  { id:'a-settings',     label:'Settings',     icon:'⚙️' }
+];
+const CONTRACTOR_SECTIONS = [
+  { id:'c-home',         label:'Home',         icon:'🏠' },
+  { id:'c-schedule',     label:'Schedule',     icon:'📅' },
+  { id:'c-myshifts',     label:'My Shifts',    icon:'📋' },
+  { id:'c-availability', label:'Availability', icon:'🗓️' },
+  { id:'c-payments',     label:'Payments',     icon:'💵' },
+  { id:'c-profile',      label:'Profile',      icon:'👤' }
+];
+
+function currentSections(){ return session.role === 'admin' ? ADMIN_SECTIONS : CONTRACTOR_SECTIONS; }
+
+function buildNav() {
+  const nav = $('main-nav');
+  nav.innerHTML = currentSections().map(s =>
+    `<button data-section="${s.id}" onclick="showSection('${s.id}')">${s.icon} ${s.label}</button>`
+  ).join('');
+}
+
+function buildContent() {
+  const main = $('main-content');
+  main.innerHTML = currentSections().map(s => `<section class="section" id="sec-${s.id}"></section>`).join('');
+}
+
+function showSection(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  const sec = $('sec-'+id);
+  if (sec) sec.classList.add('active');
+  const navBtn = document.querySelector(`nav button[data-section="${id}"]`);
+  if (navBtn) {
+    navBtn.classList.add('active');
+    // Scroll active nav button into view on mobile
+    navBtn.scrollIntoView({ behavior:'smooth', block:'nearest', inline:'center' });
+  }
+  // Lazy-render the section the first time it's shown
+  const renderer = SECTION_RENDERERS[id];
+  if (renderer) renderer();
+  window.scrollTo({ top:0, behavior:'instant' });
+}
+
+// Each section registers its renderer here. Renderers are added
+// in the section-specific blocks below (admin and contractor).
+const SECTION_RENDERERS = {};
+
+/* ============================================================
+   REALTIME
+   ============================================================ */
+function setupRealtime() {
+  // Subscribe to changes that may affect the current view. Cheap
+  // and effective: any change to shifts, signups, hours, or payments
+  // triggers a refresh of the currently visible section.
+  const ch = sb.channel('c-realtime-'+Math.random().toString(36).slice(2,8))
+    .on('postgres_changes', { event:'*', schema:'public', table:'c_shifts' }, refreshActiveSection)
+    .on('postgres_changes', { event:'*', schema:'public', table:'c_shift_signups' }, refreshActiveSection)
+    .on('postgres_changes', { event:'*', schema:'public', table:'c_hour_submissions' }, refreshActiveSection)
+    .on('postgres_changes', { event:'*', schema:'public', table:'c_payments' }, refreshActiveSection)
+    .on('postgres_changes', { event:'*', schema:'public', table:'c_availability' }, refreshActiveSection)
+    .subscribe();
+}
+function refreshActiveSection() {
+  const active = document.querySelector('.section.active');
+  if (!active) return;
+  const id = active.id.replace(/^sec-/,'');
+  const r = SECTION_RENDERERS[id];
+  if (r) r();
+}
+
+/* ============================================================
+   NOTIFICATION BANNER
+   In-portal banners (above the nav) for time-sensitive items
+   like document expirations, stale availability, etc.
+   ============================================================ */
+function getDismissed() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.dismissedNotifs)||'[]'); }
+  catch { return []; }
+}
+function dismissNotif(key) {
+  const dismissed = getDismissed();
+  if (!dismissed.includes(key)) dismissed.push(key);
+  localStorage.setItem(STORAGE_KEYS.dismissedNotifs, JSON.stringify(dismissed));
+  renderNotifBanner();
+}
+
+async function renderNotifBanner() {
+  const items = [];
+  const c = session.contractor;
+  const dismissed = getDismissed();
+
+  // Food-handler-card expiration warning (contractor self)
+  if (c.food_handler_card_expires) {
+    const days = daysFromToday(c.food_handler_card_expires);
+    if (days < 0)        items.push({ key:'food-exp', type:'urgent',  text:`Your food handler card expired ${Math.abs(days)} day${Math.abs(days)===1?'':'s'} ago. Please renew.` });
+    else if (days <= 30) items.push({ key:'food-exp', type:'warning', text:`Your food handler card expires in ${days} day${days===1?'':'s'}.` });
+  }
+
+  // Stale availability (contractor)
+  if (session.role === 'contractor') {
+    const last = c.availability_last_updated_at;
+    const stale = !last || (Date.now() - new Date(last).getTime() > 30*24*60*60*1000);
+    if (stale) items.push({ key:'avail-stale', type:'info', text:`Your availability looks out of date. Update it so we can plan shifts around you.` });
+  }
+
+  const html = items
+    .filter(i => !dismissed.includes(i.key))
+    .map(i => `
+      <div class="notif-item notif-${i.type}">
+        <span class="notif-text">${esc(i.text)}</span>
+        <button class="notif-dismiss" onclick="dismissNotif('${i.key}')">×</button>
+      </div>
+    `).join('');
+  $('notif-banner').innerHTML = html;
+}
+
+/* ============================================================
+   SECTION RENDERERS — populated in the next blocks
+   Each renderer fetches the data it needs and writes HTML into
+   its #sec-<id> container. They are called every time the
+   section is shown OR when realtime fires a refresh.
+   ============================================================ */
+
+/* --- ADMIN sections --- */
+SECTION_RENDERERS['a-dashboard']    = renderAdminDashboard;
+SECTION_RENDERERS['a-shifts']       = renderAdminShifts;
+SECTION_RENDERERS['a-availability'] = renderAdminAvailability;
+SECTION_RENDERERS['a-approvals']    = renderAdminApprovals;
+SECTION_RENDERERS['a-payments']     = renderAdminPayments;
+SECTION_RENDERERS['a-contractors']  = renderAdminContractors;
+SECTION_RENDERERS['a-audit']        = renderAdminAudit;
+SECTION_RENDERERS['a-settings']     = renderAdminSettings;
+
+/* --- CONTRACTOR sections --- */
+SECTION_RENDERERS['c-home']         = renderContractorHome;
+SECTION_RENDERERS['c-schedule']     = renderContractorSchedule;
+SECTION_RENDERERS['c-myshifts']     = renderContractorMyShifts;
+SECTION_RENDERERS['c-availability'] = renderContractorAvailability;
+SECTION_RENDERERS['c-payments']     = renderContractorPayments;
+SECTION_RENDERERS['c-profile']      = renderContractorProfile;
+
+/* ============================================================
+   PLACEHOLDER RENDERERS
+   These are replaced in subsequent script blocks below. Stubs
+   here so an early reload won't error out.
+   ============================================================ */
+function _stub(name) { return async () => { /* implemented below */ }; }
+function renderAdminDashboard()    { /* IMPL_BELOW_a_dashboard */ }
+function renderAdminShifts()       { /* IMPL_BELOW_a_shifts */ }
+function renderAdminAvailability() { /* IMPL_BELOW_a_availability */ }
+function renderAdminApprovals()    { /* IMPL_BELOW_a_approvals */ }
+function renderAdminPayments()     { /* IMPL_BELOW_a_payments */ }
+function renderAdminContractors()  { /* IMPL_BELOW_a_contractors */ }
+function renderAdminAudit()        { /* IMPL_BELOW_a_audit */ }
+function renderAdminSettings()     { /* IMPL_BELOW_a_settings */ }
+function renderContractorHome()         { /* IMPL_BELOW_c_home */ }
+function renderContractorSchedule()     { /* IMPL_BELOW_c_schedule */ }
+function renderContractorMyShifts()     { /* IMPL_BELOW_c_myshifts */ }
+function renderContractorAvailability() { /* IMPL_BELOW_c_availability */ }
+function renderContractorPayments()     { /* IMPL_BELOW_c_payments */ }
+function renderContractorProfile()      { /* IMPL_BELOW_c_profile */ }
+
+/* ============================================================
+   ON LOAD
+   ============================================================ */
+window.addEventListener('DOMContentLoaded', () => {
+  tryRestoreSession();
+  // Allow Enter to submit login form
+  ['login-email','login-password'].forEach(id => {
+    const el = $(id);
+    if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') signIn(); });
+  });
+});
+
+/* ============================================================
+   SECTION IMPLEMENTATIONS — appended below by Edits
+   Marker: SECTION_IMPLS_INSERT_HERE
+   ============================================================ */
+// ============================================================
+// SHARED DATA HELPERS
+// ============================================================
+
+async function loadSettings() {
+  const { data, error } = await sb.from('c_settings').select('*');
+  if (error) { console.warn(error); return {}; }
+  const map = {};
+  (data||[]).forEach(r => map[r.key] = r.value);
+  return map;
+}
+
+async function loadShiftsWithCounts({ from, to, statuses } = {}) {
+  let q = sb.from('c_shifts').select('*').order('bake_date', { ascending: true }).order('start_time', { ascending: true });
+  if (from) q = q.gte('bake_date', from);
+  if (to)   q = q.lte('bake_date', to);
+  if (statuses) q = q.in('status', statuses);
+  const { data: shifts, error } = await q;
+  if (error) { toast(error.message,{error:true}); return []; }
+  if (!shifts?.length) return [];
+  const ids = shifts.map(s=>s.id);
+  const { data: signups, error: sErr } = await sb.from('c_shift_signups')
+    .select('id, shift_id, contractor_id, status, signed_up_at, released_at')
+    .in('shift_id', ids);
+  if (sErr) { console.warn(sErr); }
+  const byShift = {};
+  (signups||[]).forEach(su => {
+    (byShift[su.shift_id] ||= []).push(su);
+  });
+  shifts.forEach(s => {
+    const arr = byShift[s.id] || [];
+    s.signups        = arr;
+    s.active_signups = arr.filter(x => x.status === 'signed_up');
+    s.spots_filled   = s.active_signups.length;
+    s.spots_left     = Math.max(0, s.spots_total - s.spots_filled);
+    s.i_signed_up    = arr.some(x => x.contractor_id === session.contractor.id && x.status === 'signed_up');
+    s.my_signup      = arr.find(x => x.contractor_id === session.contractor.id);
+  });
+  return shifts;
+}
+
+async function loadMyShifts() {
+  const { data, error } = await sb.from('c_shift_signups')
+    .select('*, shift:c_shifts(*)')
+    .eq('contractor_id', session.contractor.id)
+    .order('signed_up_at', { ascending: false });
+  if (error) { toast(error.message,{error:true}); return []; }
+  return data || [];
+}
+
+async function loadMyHourSubmissions() {
+  const { data, error } = await sb.from('c_hour_submissions')
+    .select('*, shift:c_shifts(*)')
+    .eq('contractor_id', session.contractor.id)
+    .order('submitted_at', { ascending: false });
+  if (error) { toast(error.message,{error:true}); return []; }
+  return data || [];
+}
+
+async function loadAllContractors({ activeOnly } = {}) {
+  let q = sb.from('c_contractors').select('*').order('first_name');
+  if (activeOnly) q = q.eq('status', 'active');
+  const { data, error } = await q;
+  if (error) { toast(error.message,{error:true}); return []; }
+  return data || [];
+}
+
+async function loadYTDSummary(year) {
+  const { data, error } = await sb.rpc('c_ytd_summary', { p_year: year || new Date().getFullYear() });
+  if (error) { toast(error.message,{error:true}); return []; }
+  return data || [];
+}
+
+async function loadPendingApprovals() {
+  const { data, error } = await sb.from('c_hour_submissions')
+    .select('*, shift:c_shifts(*), contractor:c_contractors(first_name, last_name, email)')
+    .eq('status', 'pending')
+    .order('submitted_at', { ascending: true });
+  if (error) { toast(error.message,{error:true}); return []; }
+  return data || [];
+}
+
+async function loadAuditLog({ limit=100 } = {}) {
+  const { data, error } = await sb.from('c_audit_log')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) { toast(error.message,{error:true}); return []; }
+  return data || [];
+}
+
+async function loadAvailabilityForMe(startISO, endISO) {
+  const { data, error } = await sb.from('c_availability')
+    .select('*')
+    .eq('contractor_id', session.contractor.id)
+    .gte('the_date', startISO).lte('the_date', endISO);
+  if (error) { toast(error.message,{error:true}); return []; }
+  return data || [];
+}
+
+async function loadAvailabilityCounts(startISO, endISO) {
+  const { data, error } = await sb.rpc('c_availability_counts', { p_start: startISO, p_end: endISO });
+  if (error) { toast(error.message,{error:true}); return []; }
+  return data || [];
+}
+
+async function loadAvailableContractorsForDate(dateISO) {
+  const { data, error } = await sb.rpc('c_available_contractors', { p_date: dateISO });
+  if (error) { toast(error.message,{error:true}); return []; }
+  return data || [];
+}
+
+async function loadMyDocuments() {
+  const { data, error } = await sb.from('c_documents')
+    .select('*')
+    .eq('contractor_id', session.contractor.id)
+    .order('uploaded_at', { ascending: false });
+  if (error) { toast(error.message,{error:true}); return []; }
+  return data || [];
+}
+
+async function loadDocumentsFor(contractorId) {
+  const { data, error } = await sb.from('c_documents')
+    .select('*')
+    .eq('contractor_id', contractorId)
+    .order('uploaded_at', { ascending: false });
+  if (error) { toast(error.message,{error:true}); return []; }
+  return data || [];
+}
+
+async function loadPaymentsForContractor(contractorId) {
+  const { data, error } = await sb.from('c_payments')
+    .select('*, items:c_payment_items(*)')
+    .eq('contractor_id', contractorId)
+    .order('paid_on', { ascending: false });
+  if (error) { toast(error.message,{error:true}); return []; }
+  return data || [];
+}
+
+async function loadUnpaidApprovedHours(contractorId) {
+  // Approved hour rows for this contractor that don't yet have a payment_item
+  const { data: subs, error } = await sb.from('c_hour_submissions')
+    .select('*, shift:c_shifts(*)')
+    .eq('contractor_id', contractorId)
+    .eq('status', 'approved')
+    .order('approved_at', { ascending: true });
+  if (error) { toast(error.message,{error:true}); return []; }
+  if (!subs?.length) return [];
+  const ids = subs.map(s=>s.id);
+  const { data: paid } = await sb.from('c_payment_items')
+    .select('hour_submission_id')
+    .in('hour_submission_id', ids);
+  const paidIds = new Set((paid||[]).map(p=>p.hour_submission_id));
+  return subs.filter(s => !paidIds.has(s.id));
+}
+
+// ============================================================
+// SHARED ACTION HELPERS
+// ============================================================
+
+async function adminCreateContractor({ email, first_name, last_name, phone, pay_rate, role }) {
+  if (!email || !first_name) throw new Error('Email and first name required');
+  const { data, error } = await sb.from('c_contractors').insert({
+    email: email.toLowerCase().trim(),
+    first_name, last_name: last_name||'', phone: phone||'',
+    pay_rate: Number(pay_rate)||0,
+    role: role==='admin' ? 'admin' : 'contractor',
+    status: 'active'
+  }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+async function adminSendInvite(email) {
+  if (!email) throw new Error('Email required');
+  const { data: can, error: canErr } = await sb.rpc('c_can_invite', { p_email: email });
+  if (canErr) throw canErr;
+  if (!can) throw new Error('No active contractor found with that email');
+  const { error } = await sb.auth.signInWithOtp({
+    email: email.toLowerCase().trim(),
+    options: { shouldCreateUser: true, emailRedirectTo: PORTAL_URL }
+  });
+  if (error) throw error;
+}
+
+async function adminUpdateContractor(id, updates) {
+  const { error } = await sb.from('c_contractors').update(updates).eq('id', id);
+  if (error) throw error;
+}
+
+async function adminCreateShift(shift) {
+  const payload = {
+    bake_date:   shift.bake_date,
+    start_time:  shift.start_time,
+    end_time:    shift.end_time || null,
+    location:    shift.location,
+    spots_total: Number(shift.spots_total) || 1,
+    notes:       shift.notes || '',
+    created_by:  session.contractor.id,
+    status:      'open'
+  };
+  const { data, error } = await sb.from('c_shifts').insert(payload).select().single();
+  if (error) throw error;
+  // notify all active contractors (stubbed)
+  const contractors = await loadAllContractors({ activeOnly:true });
+  const others = contractors.filter(c => c.role !== 'admin');
+  await notifyMany('shift_new', others, c => ({
+    to_email:   c.email,
+    first_name: c.first_name,
+    bake_date:  fmtDate(data.bake_date),
+    start_time: fmtTime(data.start_time),
+    location:   data.location,
+    spots_total:String(data.spots_total),
+    shift_notes:data.notes || '(none)',
+    portal_url: PORTAL_URL
+  }));
+  return data;
+}
+
+async function adminUpdateShift(id, updates) {
+  const { error } = await sb.from('c_shifts').update(updates).eq('id', id);
+  if (error) throw error;
+}
+
+async function adminCancelShift(id, reason) {
+  // Look up signups so we can notify
+  const { data: shift } = await sb.from('c_shifts').select('*').eq('id', id).single();
+  const { data: signups } = await sb.from('c_shift_signups')
+    .select('contractor:c_contractors(email, first_name)')
+    .eq('shift_id', id).eq('status', 'signed_up');
+  const { error } = await sb.from('c_shifts').update({
+    status: 'cancelled',
+    cancelled_reason: reason || '',
+    cancelled_at: new Date().toISOString()
+  }).eq('id', id);
+  if (error) throw error;
+  await notifyMany('shift_cancelled', (signups||[]).map(s=>s.contractor), c => ({
+    to_email:           c.email,
+    first_name:         c.first_name,
+    bake_date:          fmtDate(shift.bake_date),
+    location:           shift.location,
+    cancel_reason_line: reason ? `Reason: ${reason}` : '',
+    portal_url:         PORTAL_URL
+  }));
+}
+
+async function contractorSignUpForShift(shiftId) {
+  const { data, error } = await sb.from('c_shift_signups').insert({
+    shift_id: shiftId,
+    contractor_id: session.contractor.id,
+    status: 'signed_up'
+  }).select('*, shift:c_shifts(*)').single();
+  if (error) throw error;
+  await notify('signup_confirm', {
+    to_email:    session.contractor.email,
+    first_name:  session.contractor.first_name,
+    bake_date:   fmtDate(data.shift.bake_date),
+    start_time:  fmtTime(data.shift.start_time),
+    location:    data.shift.location,
+    shift_notes: data.shift.notes || '(none)',
+    portal_url:  PORTAL_URL
+  });
+  return data;
+}
+
+async function contractorReleaseSignup(signupId) {
+  // Find the shift for the email
+  const { data: signup } = await sb.from('c_shift_signups')
+    .select('*, shift:c_shifts(*)').eq('id', signupId).single();
+  const { error } = await sb.rpc('c_release_signup', { p_signup_id: signupId });
+  if (error) throw error;
+  if (signup?.shift) {
+    // notify other active contractors
+    const contractors = await loadAllContractors({ activeOnly:true });
+    const others = contractors.filter(c => c.id !== session.contractor.id && c.role !== 'admin');
+    await notifyMany('shift_released', others, c => ({
+      to_email:   c.email,
+      first_name: c.first_name,
+      bake_date:  fmtDate(signup.shift.bake_date),
+      start_time: fmtTime(signup.shift.start_time),
+      location:   signup.shift.location,
+      portal_url: PORTAL_URL
+    }));
+  }
+}
+
+async function contractorSubmitHours(signupId, shiftId, hours, notes) {
+  const { data, error } = await sb.from('c_hour_submissions').insert({
+    signup_id:       signupId,
+    shift_id:        shiftId,
+    contractor_id:   session.contractor.id,
+    submitted_hours: Number(hours),
+    submitted_notes: notes || ''
+  }).select('*, shift:c_shifts(*)').single();
+  if (error) throw error;
+  await notify('hours_submitted', {
+    to_email:        ADMIN_EMAIL,
+    contractor_name: `${session.contractor.first_name} ${session.contractor.last_name}`.trim(),
+    bake_date:       fmtDate(data.shift.bake_date),
+    submitted_hours: String(data.submitted_hours),
+    submitted_notes: data.submitted_notes || '(none)',
+    portal_url:      PORTAL_URL
+  });
+  return data;
+}
+
+async function adminApproveHours(submissionId, approvedHours, adminNotes) {
+  const { error } = await sb.rpc('c_approve_hours', {
+    p_submission_id:  submissionId,
+    p_approved_hours: Number(approvedHours),
+    p_admin_notes:    adminNotes || ''
+  });
+  if (error) throw error;
+  // load the submission + contractor to send the email
+  const { data: sub } = await sb.from('c_hour_submissions')
+    .select('*, shift:c_shifts(*), contractor:c_contractors(*)')
+    .eq('id', submissionId).single();
+  if (sub) {
+    // compute YTD line for the email
+    const ytd = await loadYTDSummary();
+    const myRow = (ytd||[]).find(r => r.contractor_id === sub.contractor_id) || {};
+    await notify('hours_approved', {
+      to_email:         sub.contractor.email,
+      first_name:       sub.contractor.first_name,
+      bake_date:        fmtDate(sub.shift.bake_date),
+      approved_hours:   String(sub.approved_hours),
+      pay_rate:         fmtCur(sub.approved_pay_rate),
+      approved_amount:  fmtCur(sub.approved_amount),
+      admin_notes_line: sub.admin_notes ? `Note from admin: ${sub.admin_notes}` : '',
+      ytd_hours:        String(myRow.approved_hours||0),
+      ytd_paid:         fmtCur(myRow.paid_amount||0),
+      ytd_pending:      fmtCur(myRow.unpaid_amount||0),
+      portal_url:       PORTAL_URL
+    });
+  }
+}
+
+async function adminReopenHours(submissionId) {
+  const { error } = await sb.rpc('c_reopen_hours', { p_submission_id: submissionId });
+  if (error) throw error;
+}
+
+async function adminCreatePayment({ contractor_id, amount, method, paid_on, reference, notes, submissionIds }) {
+  const { data: payment, error } = await sb.from('c_payments').insert({
+    contractor_id, amount: Number(amount), method,
+    paid_on, reference: reference||'', notes: notes||'',
+    created_by: session.contractor.id
+  }).select().single();
+  if (error) throw error;
+  if (submissionIds?.length) {
+    // Look up amounts per submission for proper allocation
+    const { data: subs } = await sb.from('c_hour_submissions')
+      .select('id, approved_amount')
+      .in('id', submissionIds);
+    const items = (subs||[]).map(s => ({
+      payment_id: payment.id,
+      hour_submission_id: s.id,
+      amount: s.approved_amount
+    }));
+    if (items.length) {
+      const { error: iErr } = await sb.from('c_payment_items').insert(items);
+      if (iErr) throw iErr;
+    }
+  }
+  return payment;
+}
+
+async function contractorSetAvailability(dates, status, note) {
+  if (status === null) {
+    // Clear: delete rows for those dates
+    const { error } = await sb.from('c_availability')
+      .delete()
+      .eq('contractor_id', session.contractor.id)
+      .in('the_date', dates);
+    if (error) throw error;
+    return dates.length;
+  }
+  const { data, error } = await sb.rpc('c_set_availability_bulk', {
+    p_dates: dates, p_status: status, p_note: note || ''
+  });
+  if (error) throw error;
+  return data;
+}
+
+async function uploadDocument({ file, document_type, expires_on }) {
+  if (!file) throw new Error('No file selected');
+  if (file.size > 10 * 1024 * 1024) throw new Error('File too large (10 MB max)');
+  const safeName = file.name.replace(/[^\w.\-]/g,'_');
+  const path = `${session.contractor.id}/${Date.now()}-${safeName}`;
+  const { error: upErr } = await sb.storage.from('contractor-documents').upload(path, file, { upsert: false });
+  if (upErr) throw upErr;
+  const { error: insErr } = await sb.from('c_documents').insert({
+    contractor_id: session.contractor.id,
+    document_type, file_path: path, file_name: file.name,
+    file_size_bytes: file.size, mime_type: file.type || null,
+    expires_on: expires_on || null,
+    uploaded_by: session.contractor.id
+  });
+  if (insErr) throw insErr;
+}
+
+async function deleteDocument(doc) {
+  await sb.storage.from('contractor-documents').remove([doc.file_path]);
+  const { error } = await sb.from('c_documents').delete().eq('id', doc.id);
+  if (error) throw error;
+}
+
+async function downloadDocumentURL(filePath) {
+  const { data, error } = await sb.storage.from('contractor-documents').createSignedUrl(filePath, 600);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
+// ============================================================
+// CALENDAR UTILITIES
+// ============================================================
+function monthInfo(year, month0) {
+  const first = new Date(year, month0, 1);
+  const days = new Date(year, month0+1, 0).getDate();
+  const blanks = first.getDay();  // 0=Sun
+  const cells = [];
+  for (let i = 0; i < blanks; i++) cells.push({ blank: true });
+  for (let d = 1; d <= days; d++) cells.push({ blank: false, iso: isoFromDate(new Date(year, month0, d)), day: d });
+  while (cells.length % 7 !== 0) cells.push({ blank: true });
+  return { cells, monthLabel: first.toLocaleDateString('en-US',{month:'long',year:'numeric'}) };
+}
+
+// ============================================================
+// CONTRACTOR — HOME
+// ============================================================
+async function renderContractorHome() {
+  const el = $('sec-c-home');
+  el.innerHTML = '<div class="page-h">Welcome back</div><div class="page-sub">Loading…</div>';
+  const [myShifts, ytd, openShifts] = await Promise.all([
+    loadMyShifts(),
+    loadYTDSummary(),
+    loadShiftsWithCounts({ from: todayISO(), statuses: ['open'] })
+  ]);
+  const me = (ytd||[]).find(r => r.contractor_id === session.contractor.id) || {};
+
+  // Upcoming shifts I'm signed up for
+  const upcoming = myShifts.filter(ms => ms.status === 'signed_up' && ms.shift && ms.shift.bake_date >= todayISO())
+    .sort((a,b) => a.shift.bake_date.localeCompare(b.shift.bake_date));
+  const nextShift = upcoming[0];
+
+  // Open shifts I haven't signed up for
+  const availableShifts = openShifts.filter(s => !s.i_signed_up && s.spots_left > 0).slice(0, 3);
+
+  // Profile completeness
+  const missing = [];
+  const c = session.contractor;
+  if (!c.phone) missing.push('phone');
+  if (!c.emergency_contact_name) missing.push('emergency contact');
+  if (!c.address_line1) missing.push('address');
+
+  const heroHtml = nextShift ? `
+    <div class="panel" style="border-left:4px solid var(--accent);">
+      <div class="panel-title">Your next shift</div>
+      <div style="font-family:'Playfair Display',serif;font-size:1.3rem;color:var(--brown-dk);">
+        ${esc(fmtDateShort(nextShift.shift.bake_date))} · ${esc(fmtTime(nextShift.shift.start_time))}
+      </div>
+      <div style="color:var(--muted);font-size:.88rem;margin-top:4px;">📍 ${esc(nextShift.shift.location)}</div>
+      ${nextShift.shift.notes ? `<div style="margin-top:6px;font-size:.86rem;">${esc(nextShift.shift.notes)}</div>` : ''}
+      <div class="panel-actions">
+        <button class="btn btn-outline btn-sm" onclick="showSection('c-myshifts')">View all my shifts</button>
+        <button class="btn btn-danger btn-sm" onclick="releaseSignupConfirm('${nextShift.id}', '${esc(fmtDate(nextShift.shift.bake_date))}')">Release this spot</button>
+      </div>
+    </div>
+  ` : `
+    <div class="panel">
+      <div class="panel-title">No upcoming shifts</div>
+      <p style="color:var(--muted);font-size:.92rem;">You aren't signed up for any upcoming bakes. Browse the schedule to claim a spot.</p>
+      <div class="panel-actions">
+        <button class="btn btn-primary" onclick="showSection('c-schedule')">Browse schedule</button>
+      </div>
+    </div>
+  `;
+
+  el.innerHTML = `
+    <div class="page-h">Welcome back, ${esc(c.first_name||'baker')}</div>
+    <div class="page-sub">Lazar Family Bakehouse · Contractor</div>
+
+    <div class="stats-grid">
+      <div class="stat-card"><div class="sl">Hours YTD</div><div class="sv">${(me.approved_hours||0).toFixed(1)}</div><div class="sh">approved</div></div>
+      <div class="stat-card"><div class="sl">Earned YTD</div><div class="sv">${fmtCur(me.earned_amount||0)}</div><div class="sh">${fmtCur(me.paid_amount||0)} paid</div></div>
+      <div class="stat-card"><div class="sl">Unpaid</div><div class="sv">${fmtCur(me.unpaid_amount||0)}</div><div class="sh">pending payout</div></div>
+      <div class="stat-card"><div class="sl">Pay rate</div><div class="sv">${fmtCur(c.pay_rate||0)}</div><div class="sh">per hour</div></div>
+    </div>
+
+    ${heroHtml}
+
+    ${missing.length ? `
+      <div class="panel" style="border-left:4px solid var(--warn);">
+        <div class="panel-title">Finish your profile</div>
+        <p style="font-size:.88rem;">We're still missing: ${missing.map(esc).join(', ')}.</p>
+        <div class="panel-actions">
+          <button class="btn btn-outline" onclick="showSection('c-profile')">Update profile</button>
+        </div>
+      </div>
+    ` : ''}
+
+    <div class="panel">
+      <div class="panel-title">Open shifts</div>
+      ${availableShifts.length === 0 ? `<p style="color:var(--muted);font-size:.92rem;">No open shifts right now. Check back soon.</p>` : `
+        <div class="card-list">
+          ${availableShifts.map(s => shiftCardHtml(s, /*contractorView=*/true)).join('')}
+        </div>
+        <div class="panel-actions">
+          <button class="btn btn-outline" onclick="showSection('c-schedule')">View full schedule</button>
+        </div>
+      `}
+    </div>
+  `;
+}
+
+function shiftCardHtml(s, contractorView) {
+  const urgent = (contractorView && s.spots_left > 0 && daysFromToday(s.bake_date) <= 2);
+  const fillBar = `${s.spots_filled}/${s.spots_total} signed up`;
+  const action = contractorView
+    ? (s.i_signed_up
+        ? `<button class="btn btn-outline btn-sm" disabled>Signed up</button>`
+        : (s.spots_left > 0
+            ? `<button class="btn btn-primary btn-sm" onclick="signUpForShift('${s.id}')">Sign up</button>`
+            : `<button class="btn btn-outline btn-sm" disabled>Full</button>`))
+    : `<button class="btn btn-outline btn-sm" onclick="adminOpenShiftDetail('${s.id}')">View / edit</button>`;
+  return `
+    <div class="card">
+      <div class="card-hd">
+        <div>
+          <h3>${esc(fmtDateShort(s.bake_date))} · ${esc(fmtTime(s.start_time))}${s.end_time?'–'+esc(fmtTime(s.end_time)):''}</h3>
+          <div class="card-sub">📍 ${esc(s.location)}</div>
+        </div>
+        ${urgent ? `<span class="badge b-danger">URGENT · ${daysFromToday(s.bake_date)===0?'TODAY':daysFromToday(s.bake_date)+' day'+(daysFromToday(s.bake_date)===1?'':'s')}</span>` : ''}
+        ${s.status === 'cancelled' ? `<span class="badge b-cancelled">Cancelled</span>` : ''}
+      </div>
+      ${s.notes ? `<div class="card-body" style="font-size:.84rem;">${esc(s.notes)}</div>` : ''}
+      <div class="card-meta">
+        <span><strong>${fillBar}</strong></span>
+        ${s.spots_left > 0 ? `<span style="color:var(--accent-dk);">${s.spots_left} open</span>` : `<span style="color:var(--muted);">Full</span>`}
+      </div>
+      <div class="card-actions">${action}</div>
+    </div>
+  `;
+}
+
+window.signUpForShift = async function(shiftId) {
+  try {
+    await contractorSignUpForShift(shiftId);
+    toast('Signed up — confirmation sent to your email');
+    refreshActiveSection();
+  } catch (e) { toast(e.message || 'Sign-up failed', {error:true}); }
+};
+
+window.releaseSignupConfirm = function(signupId, dateLabel) {
+  openModal('Release this spot?',
+    `<p style="font-size:.92rem;">Release your spot for the ${esc(dateLabel)} bake? Other contractors will be notified that a spot opened up.</p>`,
+    [
+      { label:'Keep my spot', cls:'btn-outline', onClick: closeModal },
+      { label:'Release spot', cls:'btn-danger', onClick: async () => {
+        try {
+          await contractorReleaseSignup(signupId);
+          closeModal();
+          toast('Spot released');
+          refreshActiveSection();
+        } catch (e) { toast(e.message || 'Release failed', {error:true}); }
+      }}
+    ]
+  );
+};
+
+// ============================================================
+// CONTRACTOR — SCHEDULE
+// ============================================================
+async function renderContractorSchedule() {
+  const el = $('sec-c-schedule');
+  el.innerHTML = '<div class="page-h">Schedule</div><div class="page-sub">Loading…</div>';
+  const shifts = await loadShiftsWithCounts({ from: todayISO(), statuses: ['open'] });
+  if (!shifts.length) {
+    el.innerHTML = `
+      <div class="page-h">Schedule</div>
+      <div class="page-sub">Upcoming bakes</div>
+      <div class="panel"><p style="color:var(--muted);">No upcoming shifts posted yet. Make sure your availability is up to date so we can plan around you.</p>
+      <div class="panel-actions"><button class="btn btn-outline" onclick="showSection('c-availability')">Update availability</button></div></div>
+    `;
+    return;
+  }
+  el.innerHTML = `
+    <div class="page-h">Schedule</div>
+    <div class="page-sub">Upcoming bakes</div>
+    <div class="card-list">
+      ${shifts.map(s => shiftCardHtml(s, true)).join('')}
+    </div>
+  `;
+}
+
+// ============================================================
+// CONTRACTOR — MY SHIFTS
+// ============================================================
+async function renderContractorMyShifts() {
+  const el = $('sec-c-myshifts');
+  el.innerHTML = '<div class="page-h">My Shifts</div><div class="page-sub">Loading…</div>';
+  const [mySignups, mySubs] = await Promise.all([loadMyShifts(), loadMyHourSubmissions()]);
+  const subBySignup = {};
+  mySubs.forEach(s => { subBySignup[s.signup_id] = s; });
+
+  const upcoming = mySignups.filter(ms => ms.status === 'signed_up' && ms.shift && ms.shift.bake_date >= todayISO())
+    .sort((a,b) => a.shift.bake_date.localeCompare(b.shift.bake_date));
+  const awaitingSubmit = mySignups.filter(ms => ms.status === 'signed_up' && ms.shift && ms.shift.bake_date < todayISO() && !subBySignup[ms.id]);
+  const pending = mySubs.filter(s => s.status === 'pending');
+  const approved = mySubs.filter(s => s.status === 'approved');
+
+  function upcomingCard(ms) {
+    return `
+      <div class="card">
+        <div class="card-hd">
+          <div>
+            <h3>${esc(fmtDateShort(ms.shift.bake_date))} · ${esc(fmtTime(ms.shift.start_time))}</h3>
+            <div class="card-sub">📍 ${esc(ms.shift.location)}</div>
+          </div>
+        </div>
+        ${ms.shift.notes ? `<div class="card-body" style="font-size:.84rem;">${esc(ms.shift.notes)}</div>` : ''}
+        <div class="card-actions">
+          <button class="btn btn-danger btn-sm" onclick="releaseSignupConfirm('${ms.id}','${esc(fmtDate(ms.shift.bake_date))}')">Release spot</button>
+        </div>
+      </div>
+    `;
+  }
+  function awaitingSubmitCard(ms) {
+    return `
+      <div class="card">
+        <div class="card-hd">
+          <div>
+            <h3>${esc(fmtDateShort(ms.shift.bake_date))}</h3>
+            <div class="card-sub">📍 ${esc(ms.shift.location)} · ${esc(fmtTime(ms.shift.start_time))}</div>
+          </div>
+          <span class="badge b-warn">Submit hours</span>
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-primary btn-sm" onclick="openSubmitHoursModal('${ms.id}','${ms.shift_id}','${esc(fmtDate(ms.shift.bake_date))}')">Submit hours</button>
+        </div>
+      </div>
+    `;
+  }
+  function pendingCard(s) {
+    return `
+      <div class="card">
+        <div class="card-hd">
+          <div>
+            <h3>${esc(fmtDateShort(s.shift.bake_date))} · ${s.submitted_hours} hrs submitted</h3>
+            <div class="card-sub">📍 ${esc(s.shift.location)} · awaiting admin approval</div>
+          </div>
+          <span class="badge b-pending">Pending</span>
+        </div>
+        ${s.submitted_notes ? `<div class="card-body" style="font-size:.84rem;">Your note: ${esc(s.submitted_notes)}</div>` : ''}
+      </div>
+    `;
+  }
+  function approvedCard(s) {
+    return `
+      <div class="card">
+        <div class="card-hd">
+          <div>
+            <h3>${esc(fmtDateShort(s.shift.bake_date))} · ${s.approved_hours} hrs</h3>
+            <div class="card-sub">${fmtCur(s.approved_amount)} approved</div>
+          </div>
+          <span class="badge b-approved">Approved</span>
+        </div>
+        ${s.admin_notes ? `<div class="card-body" style="font-size:.84rem;">Admin note: ${esc(s.admin_notes)}</div>` : ''}
+      </div>
+    `;
+  }
+
+  el.innerHTML = `
+    <div class="page-h">My Shifts</div>
+    <div class="page-sub">Everything I've signed up for</div>
+
+    <div class="panel">
+      <div class="panel-title">Upcoming (${upcoming.length})</div>
+      ${upcoming.length ? `<div class="card-list">${upcoming.map(upcomingCard).join('')}</div>` : `<p style="color:var(--muted);font-size:.9rem;">No upcoming shifts.</p>`}
+    </div>
+
+    ${awaitingSubmit.length ? `
+      <div class="panel" style="border-left:4px solid var(--warn);">
+        <div class="panel-title">Submit hours (${awaitingSubmit.length})</div>
+        <div class="card-list">${awaitingSubmit.map(awaitingSubmitCard).join('')}</div>
+      </div>
+    ` : ''}
+
+    ${pending.length ? `
+      <div class="panel">
+        <div class="panel-title">Awaiting approval (${pending.length})</div>
+        <div class="card-list">${pending.map(pendingCard).join('')}</div>
+      </div>
+    ` : ''}
+
+    ${approved.length ? `
+      <div class="panel">
+        <div class="panel-title">Approved (${approved.length})</div>
+        <div class="card-list">${approved.slice(0,10).map(approvedCard).join('')}</div>
+        ${approved.length > 10 ? `<p style="color:var(--muted);font-size:.84rem;margin-top:8px;">Showing 10 of ${approved.length} — see <button class="login-link" onclick="showSection('c-payments')">Payments</button> for full history.</p>` : ''}
+      </div>
+    ` : ''}
+  `;
+}
+
+window.openSubmitHoursModal = function(signupId, shiftId, dateLabel) {
+  const formId = 'sh-'+Math.random().toString(36).slice(2,8);
+  openModal(`Submit hours · ${dateLabel}`, `
+    <div class="fg" style="margin-bottom:12px;">
+      <label for="${formId}-hrs">Hours worked</label>
+      <input id="${formId}-hrs" type="number" step="0.25" min="0" max="24" inputmode="decimal" />
+      <div class="help">Use decimals for partial hours (e.g. 4.5 for 4 hours 30 mins).</div>
+    </div>
+    <div class="fg">
+      <label for="${formId}-notes">Notes (optional)</label>
+      <textarea id="${formId}-notes" rows="3" placeholder="Anything admin should know — e.g. arrived 15 min early, finished a special order, etc."></textarea>
+    </div>
+  `, [
+    { label:'Cancel', cls:'btn-outline', onClick: closeModal },
+    { label:'Submit for approval', cls:'btn-primary', onClick: async () => {
+      const hrs = $(formId+'-hrs').value;
+      const notes = $(formId+'-notes').value;
+      if (!hrs || Number(hrs) <= 0) { toast('Enter hours worked', {error:true}); return; }
+      try {
+        await contractorSubmitHours(signupId, shiftId, hrs, notes);
+        closeModal();
+        toast('Submitted — admin will review and approve');
+        refreshActiveSection();
+      } catch (e) { toast(e.message || 'Submit failed', {error:true}); }
+    }}
+  ]);
+};
+
+// ============================================================
+// CONTRACTOR — AVAILABILITY (calendar)
+// ============================================================
+const _avState = { year: new Date().getFullYear(), month: new Date().getMonth(), selected: new Set(), data: {} };
+
+async function renderContractorAvailability() {
+  const el = $('sec-c-availability');
+  el.innerHTML = '<div class="page-h">My Availability</div><div class="page-sub">Loading…</div>';
+
+  // Fetch availability for the visible month + 1 month context
+  const start = isoFromDate(new Date(_avState.year, _avState.month - 1, 1));
+  const end   = isoFromDate(new Date(_avState.year, _avState.month + 2, 0));
+  const rows = await loadAvailabilityForMe(start, end);
+  _avState.data = {};
+  rows.forEach(r => { _avState.data[r.the_date] = r; });
+
+  el.innerHTML = `
+    <div class="page-h">My Availability</div>
+    <div class="page-sub">Mark which days you're free, busy, or tentative — the more dates you fill, the better we can plan shifts around you</div>
+
+    <div class="cal-wrap">
+      <div class="cal-header">
+        <button class="cal-nav-btn" onclick="availPrevMonth()">‹</button>
+        <div class="cal-month-label" id="av-month-label"></div>
+        <button class="cal-nav-btn" onclick="availNextMonth()">›</button>
+      </div>
+      <div class="cal-dow-row">
+        <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+      </div>
+      <div class="cal-grid" id="av-grid"></div>
+      <div class="cal-legend">
+        <span><span class="cal-legend-swatch" style="background:#dcefd5;border-color:var(--accent);"></span>Free</span>
+        <span><span class="cal-legend-swatch" style="background:#fadbd8;border-color:var(--danger);"></span>Busy</span>
+        <span><span class="cal-legend-swatch" style="background:#fff3cd;border-color:#d4ac0d;"></span>Tentative</span>
+        <span><span class="cal-legend-swatch" style="background:var(--cream-lt);"></span>Not set</span>
+      </div>
+      <div class="cal-toolbar">
+        <button class="btn btn-outline btn-sm" onclick="availSelectAll()">Select all (visible month)</button>
+        <button class="btn btn-outline btn-sm" onclick="availSelectWeekends()">Select all weekends</button>
+        <button class="btn btn-outline btn-sm" onclick="availClearSelection()">Clear selection</button>
+      </div>
+      <div class="cal-toolbar" id="av-action-bar" style="display:none;">
+        <button class="btn btn-primary btn-sm" onclick="availApplyStatus('free')">Mark Free</button>
+        <button class="btn btn-danger btn-sm" onclick="availApplyStatus('busy')">Mark Busy</button>
+        <button class="btn btn-gold btn-sm" onclick="availApplyStatus('tentative')">Mark Tentative</button>
+        <button class="btn btn-outline btn-sm" onclick="availApplyStatus(null)">Clear</button>
+      </div>
+      <p id="av-help" style="font-size:.78rem;color:var(--muted);margin-top:8px;">Tap days to select them, then tap one of the Mark buttons. Or tap a single day to cycle its status (Free → Busy → Tentative → Clear).</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Quick presets</div>
+      <div class="panel-actions">
+        <button class="btn btn-outline btn-sm" onclick="availPresetWeekendsFreeNext90()">All weekends free · next 3 months</button>
+        <button class="btn btn-outline btn-sm" onclick="availPresetWeekdaysBusy90()">All weekdays busy · next 3 months</button>
+        <button class="btn btn-danger btn-sm" onclick="availPresetClear90()">Clear next 3 months</button>
+      </div>
+      <p style="font-size:.78rem;color:var(--muted);margin-top:8px;">Presets are a fast starting point — tap individual days to fine-tune.</p>
+    </div>
+  `;
+  renderAvailabilityGrid();
+}
+
+function renderAvailabilityGrid() {
+  const info = monthInfo(_avState.year, _avState.month);
+  $('av-month-label').textContent = info.monthLabel;
+  const grid = $('av-grid');
+  const today = todayISO();
+  grid.innerHTML = info.cells.map(c => {
+    if (c.blank) return '<div class="cal-day cd-blank"></div>';
+    const row = _avState.data[c.iso];
+    const cls = ['cal-day'];
+    if (row?.status) cls.push('cd-'+row.status);
+    if (c.iso < today) cls.push('cd-past');
+    if (c.iso === today) cls.push('cd-today');
+    if (_avState.selected.has(c.iso)) cls.push('cd-selected');
+    return `
+      <div class="${cls.join(' ')}" onclick="availDayTap('${c.iso}')">
+        <div class="cal-day-num">${c.day}</div>
+        ${row?.note ? `<div class="cal-day-meta">${esc(row.note.slice(0,8))}${row.note.length>8?'…':''}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+  $('av-action-bar').style.display = _avState.selected.size > 0 ? '' : 'none';
+}
+
+window.availPrevMonth = function(){
+  if (_avState.month === 0) { _avState.year -= 1; _avState.month = 11; }
+  else _avState.month -= 1;
+  _avState.selected.clear();
+  renderContractorAvailability();
+};
+window.availNextMonth = function(){
+  if (_avState.month === 11) { _avState.year += 1; _avState.month = 0; }
+  else _avState.month += 1;
+  _avState.selected.clear();
+  renderContractorAvailability();
+};
+window.availDayTap = function(iso) {
+  if (iso < todayISO()) { toast('Past dates are locked', {error:true}); return; }
+  if (_avState.selected.size > 0) {
+    if (_avState.selected.has(iso)) _avState.selected.delete(iso);
+    else _avState.selected.add(iso);
+    renderAvailabilityGrid();
+    return;
+  }
+  // Single-tap cycle: free → busy → tentative → clear
+  const cur = _avState.data[iso]?.status;
+  const next = cur === undefined || cur === null ? 'free'
+             : cur === 'free' ? 'busy'
+             : cur === 'busy' ? 'tentative'
+             : null;
+  applyAvailability([iso], next);
+};
+window.availSelectAll = function(){
+  const info = monthInfo(_avState.year, _avState.month);
+  const today = todayISO();
+  info.cells.forEach(c => { if (!c.blank && c.iso >= today) _avState.selected.add(c.iso); });
+  renderAvailabilityGrid();
+};
+window.availSelectWeekends = function(){
+  const info = monthInfo(_avState.year, _avState.month);
+  const today = todayISO();
+  info.cells.forEach(c => {
+    if (c.blank || c.iso < today) return;
+    const d = new Date(c.iso+'T12:00:00').getDay();
+    if (d === 0 || d === 6) _avState.selected.add(c.iso);
+  });
+  renderAvailabilityGrid();
+};
+window.availClearSelection = function(){ _avState.selected.clear(); renderAvailabilityGrid(); };
+window.availApplyStatus = async function(status){
+  const dates = Array.from(_avState.selected);
+  if (!dates.length) return;
+  await applyAvailability(dates, status);
+  _avState.selected.clear();
+};
+async function applyAvailability(dates, status) {
+  try {
+    await contractorSetAvailability(dates, status);
+    if (status === null) dates.forEach(d => delete _avState.data[d]);
+    else dates.forEach(d => _avState.data[d] = { the_date:d, status });
+    toast(status === null ? 'Cleared' : `Marked ${status}`);
+    renderAvailabilityGrid();
+    session.contractor.availability_last_updated_at = new Date().toISOString();
+  } catch (e) {
+    toast(e.message || 'Update failed', {error:true});
+  }
+}
+window.availPresetWeekendsFreeNext90 = async function() {
+  const dates = [];
+  const today = new Date();
+  for (let i = 0; i < 90; i++) {
+    const d = new Date(today); d.setDate(today.getDate()+i);
+    if (d.getDay() === 0 || d.getDay() === 6) dates.push(isoFromDate(d));
+  }
+  await applyAvailability(dates, 'free');
+  renderContractorAvailability();
+};
+window.availPresetWeekdaysBusy90 = async function() {
+  const dates = [];
+  const today = new Date();
+  for (let i = 0; i < 90; i++) {
+    const d = new Date(today); d.setDate(today.getDate()+i);
+    if (d.getDay() >= 1 && d.getDay() <= 5) dates.push(isoFromDate(d));
+  }
+  await applyAvailability(dates, 'busy');
+  renderContractorAvailability();
+};
+window.availPresetClear90 = async function() {
+  if (!confirm('Clear all availability for the next 3 months?')) return;
+  const start = todayISO();
+  const end = isoFromDate(new Date(Date.now()+90*24*60*60*1000));
+  try {
+    const { error } = await sb.rpc('c_clear_availability', { p_start: start, p_end: end });
+    if (error) throw error;
+    toast('Cleared');
+    renderContractorAvailability();
+  } catch (e) { toast(e.message || 'Clear failed', {error:true}); }
+};
+
+// ============================================================
+// CONTRACTOR — PAYMENTS
+// ============================================================
+async function renderContractorPayments() {
+  const el = $('sec-c-payments');
+  el.innerHTML = '<div class="page-h">Payments</div><div class="page-sub">Loading…</div>';
+  const [ytd, payments, unpaid, subs] = await Promise.all([
+    loadYTDSummary(),
+    loadPaymentsForContractor(session.contractor.id),
+    loadUnpaidApprovedHours(session.contractor.id),
+    loadMyHourSubmissions()
+  ]);
+  const me = (ytd||[]).find(r => r.contractor_id === session.contractor.id) || {};
+  const approachingThreshold = (me.earned_amount||0) >= 500 && (me.earned_amount||0) < 600;
+  const overThreshold = (me.earned_amount||0) >= 600;
+
+  el.innerHTML = `
+    <div class="page-h">Payments</div>
+    <div class="page-sub">Real-time view of what you've earned and what's been paid</div>
+
+    <div class="stats-grid">
+      <div class="stat-card"><div class="sl">Earned YTD</div><div class="sv">${fmtCur(me.earned_amount||0)}</div><div class="sh">${(me.approved_hours||0).toFixed(1)} hrs approved</div></div>
+      <div class="stat-card"><div class="sl">Paid YTD</div><div class="sv">${fmtCur(me.paid_amount||0)}</div></div>
+      <div class="stat-card"><div class="sl">Unpaid</div><div class="sv">${fmtCur(me.unpaid_amount||0)}</div><div class="sh">${unpaid.length} shift${unpaid.length===1?'':'s'} pending payout</div></div>
+      <div class="stat-card"><div class="sl">Pending approval</div><div class="sv">${(me.pending_hours||0).toFixed(1)}</div><div class="sh">hours waiting</div></div>
+    </div>
+
+    ${overThreshold ? `
+      <div class="panel" style="border-left:4px solid var(--warn);">
+        <div class="panel-title">Heads up · 1099-NEC reporting threshold</div>
+        <p style="font-size:.9rem;">You've earned more than $600 with LFB this year, which is the IRS 1099-NEC reporting threshold. Make sure your W-9 is on file in your profile.</p>
+        <div class="panel-actions"><button class="btn btn-outline btn-sm" onclick="showSection('c-profile')">Check W-9</button></div>
+      </div>
+    ` : approachingThreshold ? `
+      <div class="panel" style="border-left:4px solid var(--info);">
+        <div class="panel-title">Approaching $600 threshold</div>
+        <p style="font-size:.9rem;">You're approaching the IRS 1099-NEC reporting threshold ($600/year). Make sure your W-9 is on file.</p>
+        <div class="panel-actions"><button class="btn btn-outline btn-sm" onclick="showSection('c-profile')">Check W-9</button></div>
+      </div>
+    ` : ''}
+
+    <div class="panel">
+      <div class="panel-title">Unpaid approved hours (${unpaid.length})</div>
+      ${unpaid.length === 0 ? `<p style="color:var(--muted);font-size:.9rem;">All caught up.</p>` : `
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Shift date</th><th>Hours</th><th>Rate</th><th>Amount</th></tr></thead>
+          <tbody>
+            ${unpaid.map(s => `
+              <tr><td>${esc(fmtDateShort(s.shift.bake_date))}</td><td>${s.approved_hours}</td><td>${fmtCur(s.approved_pay_rate)}</td><td><strong>${fmtCur(s.approved_amount)}</strong></td></tr>
+            `).join('')}
+          </tbody>
+        </table></div>
+      `}
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Payment history</div>
+      ${payments.length === 0 ? `<p style="color:var(--muted);font-size:.9rem;">No payments recorded yet.</p>` : `
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Paid on</th><th>Amount</th><th>Method</th><th>Reference</th></tr></thead>
+          <tbody>
+            ${payments.map(p => `
+              <tr>
+                <td>${esc(fmtDateShort(p.paid_on))}</td>
+                <td><strong>${fmtCur(p.amount)}</strong></td>
+                <td>${esc(p.method)}</td>
+                <td>${esc(p.reference||'—')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table></div>
+      `}
+    </div>
+  `;
+}
+
+// ============================================================
+// CONTRACTOR — PROFILE
+// ============================================================
+async function renderContractorProfile() {
+  const el = $('sec-c-profile');
+  el.innerHTML = '<div class="page-h">Profile</div><div class="page-sub">Loading…</div>';
+  const docs = await loadMyDocuments();
+  const c = session.contractor;
+  el.innerHTML = `
+    <div class="page-h">Profile</div>
+    <div class="page-sub">Keep this current — admin reaches out using this info</div>
+
+    <div class="panel">
+      <div class="panel-title">Personal info</div>
+      <div class="form-row">
+        <div class="fg"><label>First name</label><input id="p-first" value="${esc(c.first_name||'')}" /></div>
+        <div class="fg"><label>Last name</label><input id="p-last" value="${esc(c.last_name||'')}" /></div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>Email</label><input value="${esc(c.email||'')}" readonly /><div class="help">Email is locked — contact admin to change.</div></div>
+        <div class="fg"><label>Phone</label><input id="p-phone" type="tel" inputmode="tel" value="${esc(c.phone||'')}" /></div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>Pay rate</label><input value="${fmtCur(c.pay_rate||0)} / hour" readonly /><div class="help">Set by admin per your contract.</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Address</div>
+      <div class="form-row">
+        <div class="fg" style="grid-column:1/-1;"><label>Street</label><input id="p-addr1" value="${esc(c.address_line1||'')}" /></div>
+        <div class="fg"><label>Apt / Unit (optional)</label><input id="p-addr2" value="${esc(c.address_line2||'')}" /></div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>City</label><input id="p-city" value="${esc(c.city||'')}" /></div>
+        <div class="fg"><label>State</label><input id="p-state" value="${esc(c.state||'')}" /></div>
+        <div class="fg"><label>ZIP</label><input id="p-zip" inputmode="numeric" value="${esc(c.postal_code||'')}" /></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Emergency contact</div>
+      <div class="form-row">
+        <div class="fg"><label>Name</label><input id="p-ec-name" value="${esc(c.emergency_contact_name||'')}" /></div>
+        <div class="fg"><label>Phone</label><input id="p-ec-phone" type="tel" inputmode="tel" value="${esc(c.emergency_contact_phone||'')}" /></div>
+        <div class="fg"><label>Relationship</label><input id="p-ec-rel" value="${esc(c.emergency_contact_relationship||'')}" /></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Food handler card</div>
+      <div class="form-row">
+        <div class="fg"><label>Expiration date</label><input id="p-food-exp" type="date" value="${esc(c.food_handler_card_expires||'')}" /></div>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary btn-block" onclick="saveProfile()">Save profile</button>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Documents</div>
+      <p style="font-size:.84rem;color:var(--muted);">Upload your W-9, ID, food handler card, or any other relevant document. Files are private to you and admin.</p>
+      <div class="form-row">
+        <div class="fg">
+          <label>Document type</label>
+          <select id="doc-type">
+            <option value="w9">W-9</option>
+            <option value="id">ID</option>
+            <option value="food_handler_card">Food Handler Card</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label>Expiration (optional)</label>
+          <input id="doc-exp" type="date" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="fg" style="grid-column:1/-1;">
+          <label>File</label>
+          <input id="doc-file" type="file" accept=".pdf,.png,.jpg,.jpeg,.heic" />
+          <div class="help">Max 10 MB. PDF, JPG, PNG accepted.</div>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="uploadDoc()">Upload</button>
+      </div>
+      <div class="doc-list" id="doc-list" style="margin-top:14px;">
+        ${docs.length === 0 ? `<p style="color:var(--muted);font-size:.9rem;">No documents uploaded yet.</p>` : docs.map(d => docItemHtml(d, true)).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function docItemHtml(d, ownerCanDelete) {
+  const expWarning = d.expires_on && daysFromToday(d.expires_on) <= 30
+    ? `<span class="badge ${daysFromToday(d.expires_on)<0?'b-danger':'b-warn'}" style="margin-left:6px;">Expires ${fmtDateShort(d.expires_on)}</span>`
+    : (d.expires_on ? `<span style="margin-left:6px;color:var(--muted);font-size:.74rem;">exp ${fmtDateShort(d.expires_on)}</span>` : '');
+  return `
+    <div class="doc-item">
+      <div class="doc-icon">📄</div>
+      <div class="doc-meta">
+        <div class="doc-name">${esc(d.file_name)}${expWarning}</div>
+        <div class="doc-sub">${esc(d.document_type.replace('_',' '))} · uploaded ${esc(fmtDateShort(d.uploaded_at))}</div>
+      </div>
+      <div class="doc-actions">
+        <button class="btn btn-outline btn-sm" onclick="viewDoc('${d.file_path.replace(/'/g,"\\'")}')">View</button>
+        ${ownerCanDelete ? `<button class="btn btn-danger btn-sm" onclick="confirmDeleteDoc('${d.id}','${d.file_path.replace(/'/g,"\\'")}')">Delete</button>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+window.viewDoc = async function(filePath) {
+  try {
+    const url = await downloadDocumentURL(filePath);
+    window.open(url, '_blank');
+  } catch (e) { toast(e.message || 'Download failed', {error:true}); }
+};
+
+window.confirmDeleteDoc = function(id, filePath) {
+  openModal('Delete document?', '<p style="font-size:.92rem;">This deletes the file permanently. Continue?</p>', [
+    { label:'Cancel', cls:'btn-outline', onClick: closeModal },
+    { label:'Delete', cls:'btn-danger', onClick: async () => {
+      try {
+        await deleteDocument({ id, file_path: filePath });
+        closeModal();
+        toast('Deleted');
+        refreshActiveSection();
+      } catch (e) { toast(e.message || 'Delete failed', {error:true}); }
+    }}
+  ]);
+};
+
+window.uploadDoc = async function() {
+  const f = $('doc-file').files[0];
+  const t = $('doc-type').value;
+  const exp = $('doc-exp').value || null;
+  if (!f) { toast('Pick a file first', {error:true}); return; }
+  try {
+    await uploadDocument({ file: f, document_type: t, expires_on: exp });
+    toast('Uploaded');
+    refreshActiveSection();
+  } catch (e) { toast(e.message || 'Upload failed', {error:true}); }
+};
+
+window.saveProfile = async function() {
+  const updates = {
+    first_name: v('p-first'),
+    last_name:  v('p-last'),
+    phone:      v('p-phone'),
+    address_line1: v('p-addr1'),
+    address_line2: v('p-addr2'),
+    city:       v('p-city'),
+    state:      v('p-state'),
+    postal_code:v('p-zip'),
+    emergency_contact_name:  v('p-ec-name'),
+    emergency_contact_phone: v('p-ec-phone'),
+    emergency_contact_relationship: v('p-ec-rel'),
+    food_handler_card_expires: v('p-food-exp') || null
+  };
+  try {
+    const { error } = await sb.from('c_contractors').update(updates).eq('id', session.contractor.id);
+    if (error) throw error;
+    Object.assign(session.contractor, updates);
+    toast('Profile saved');
+    renderNotifBanner();
+  } catch (e) { toast(e.message || 'Save failed', {error:true}); }
+};
+
+// ============================================================
+// ADMIN — DASHBOARD
+// ============================================================
+async function renderAdminDashboard() {
+  const el = $('sec-a-dashboard');
+  el.innerHTML = '<div class="page-h">Admin Dashboard</div><div class="page-sub">Loading…</div>';
+  const [ytd, pending, openShifts] = await Promise.all([
+    loadYTDSummary(),
+    loadPendingApprovals(),
+    loadShiftsWithCounts({ from: todayISO(), statuses: ['open'] })
+  ]);
+  const activeContractors = (ytd||[]).filter(r => r.status === 'active');
+  const totalHours = activeContractors.reduce((s,r) => s + Number(r.approved_hours||0), 0);
+  const totalPaid  = activeContractors.reduce((s,r) => s + Number(r.paid_amount||0), 0);
+  const totalUnpaid= activeContractors.reduce((s,r) => s + Number(r.unpaid_amount||0), 0);
+  const over600    = activeContractors.filter(r => Number(r.earned_amount||0) >= 600).length;
+  const near600    = activeContractors.filter(r => Number(r.earned_amount||0) >= 500 && Number(r.earned_amount||0) < 600).length;
+  const openTotal  = openShifts.reduce((s,sh) => s + sh.spots_left, 0);
+
+  el.innerHTML = `
+    <div class="page-h">Admin Dashboard</div>
+    <div class="page-sub">${new Date().getFullYear()} year-to-date</div>
+
+    <div class="stats-grid">
+      <div class="stat-card"><div class="sl">Active contractors</div><div class="sv">${activeContractors.filter(r=>r.first_name).length}</div></div>
+      <div class="stat-card"><div class="sl">Hours YTD</div><div class="sv">${totalHours.toFixed(1)}</div><div class="sh">approved</div></div>
+      <div class="stat-card"><div class="sl">Paid YTD</div><div class="sv">${fmtCur(totalPaid)}</div><div class="sh">${fmtCur(totalUnpaid)} unpaid</div></div>
+      <div class="stat-card"><div class="sl">Pending approvals</div><div class="sv">${pending.length}</div><div class="sh">${pending.length?'<button class="login-link" onclick="showSection(\'a-approvals\')">Review now</button>':'all clear'}</div></div>
+      <div class="stat-card"><div class="sl">Open shift spots</div><div class="sv">${openTotal}</div><div class="sh">${openShifts.length} shift${openShifts.length===1?'':'s'} posted</div></div>
+      <div class="stat-card"><div class="sl">1099 threshold</div><div class="sv">${over600}</div><div class="sh">${near600} approaching</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Contractors</div>
+      <div class="tbl-wrap"><table>
+        <thead><tr>
+          <th>Name</th><th>Status</th><th>Hrs YTD</th><th>Earned</th><th>Paid</th><th>Unpaid</th><th>1099</th><th>Food card</th><th>Availability</th>
+        </tr></thead>
+        <tbody>
+          ${(ytd||[]).filter(r => r.contractor_id).map(r => {
+            const earned = Number(r.earned_amount||0);
+            const over = earned >= 600;
+            const near = earned >= 500 && earned < 600;
+            const flag = over ? '<span class="badge b-danger">Over $600</span>' : near ? '<span class="badge b-warn">Near $600</span>' : '—';
+            const food = r.food_handler_card_expires
+              ? (daysFromToday(r.food_handler_card_expires) < 0
+                  ? `<span class="badge b-danger">Expired ${fmtDateShort(r.food_handler_card_expires)}</span>`
+                  : (daysFromToday(r.food_handler_card_expires) <= 30
+                      ? `<span class="badge b-warn">${fmtDateShort(r.food_handler_card_expires)}</span>`
+                      : esc(fmtDateShort(r.food_handler_card_expires))))
+              : '—';
+            const avail = r.availability_last_updated_at
+              ? (Date.now() - new Date(r.availability_last_updated_at).getTime() > 30*86400000
+                  ? `<span class="badge b-warn">Stale</span>`
+                  : esc(fmtDateShort(r.availability_last_updated_at)))
+              : '<span class="badge b-warn">Never</span>';
+            return `<tr>
+              <td><strong>${esc(r.first_name||'')} ${esc(r.last_name||'')}</strong><div style="font-size:.74rem;color:var(--muted);">${esc(r.email)}</div></td>
+              <td><span class="badge ${r.status==='active'?'b-active':'b-inactive'}">${esc(r.status)}</span></td>
+              <td>${Number(r.approved_hours||0).toFixed(1)}</td>
+              <td>${fmtCur(earned)}</td>
+              <td>${fmtCur(r.paid_amount||0)}</td>
+              <td>${fmtCur(r.unpaid_amount||0)}</td>
+              <td>${flag}</td>
+              <td>${food}</td>
+              <td>${avail}</td>
+            </tr>`;
+          }).join('') || '<tr><td class="empty-row" colspan="9">No contractors yet</td></tr>'}
+        </tbody>
+      </table></div>
+    </div>
+  `;
+}
+
+// ============================================================
+// ADMIN — SHIFTS
+// ============================================================
+async function renderAdminShifts() {
+  const el = $('sec-a-shifts');
+  el.innerHTML = '<div class="page-h">Shifts</div><div class="page-sub">Loading…</div>';
+  const all = await loadShiftsWithCounts({});
+  const upcoming = all.filter(s => s.bake_date >= todayISO()).sort((a,b) => a.bake_date.localeCompare(b.bake_date));
+  const past     = all.filter(s => s.bake_date <  todayISO()).sort((a,b) => b.bake_date.localeCompare(a.bake_date)).slice(0, 30);
+
+  el.innerHTML = `
+    <div class="page-h">Shifts</div>
+    <div class="page-sub">Create and manage bakes</div>
+
+    <div class="panel-actions" style="margin-bottom:14px;">
+      <button class="btn btn-primary" onclick="openCreateShiftModal()">+ New shift</button>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Upcoming (${upcoming.length})</div>
+      ${upcoming.length === 0 ? '<p style="color:var(--muted);font-size:.9rem;">No upcoming shifts. Add one above.</p>' :
+        `<div class="card-list">${upcoming.map(s => adminShiftCardHtml(s)).join('')}</div>`}
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Past (last 30)</div>
+      ${past.length === 0 ? '<p style="color:var(--muted);font-size:.9rem;">No past shifts.</p>' :
+        `<div class="card-list">${past.map(s => adminShiftCardHtml(s)).join('')}</div>`}
+    </div>
+  `;
+}
+
+function adminShiftCardHtml(s) {
+  const statusBadge =
+    s.status === 'cancelled' ? '<span class="badge b-cancelled">Cancelled</span>' :
+    s.status === 'completed' ? '<span class="badge b-completed">Completed</span>' :
+    s.spots_left === 0 ? '<span class="badge b-active">Full</span>' :
+    '<span class="badge b-pending">'+s.spots_left+' open</span>';
+  return `
+    <div class="card">
+      <div class="card-hd">
+        <div>
+          <h3>${esc(fmtDateShort(s.bake_date))} · ${esc(fmtTime(s.start_time))}${s.end_time?'–'+esc(fmtTime(s.end_time)):''}</h3>
+          <div class="card-sub">📍 ${esc(s.location)}</div>
+        </div>
+        ${statusBadge}
+      </div>
+      ${s.notes ? `<div class="card-body" style="font-size:.84rem;">${esc(s.notes)}</div>` : ''}
+      <div class="card-meta">
+        <span><strong>${s.spots_filled} / ${s.spots_total}</strong> signed up</span>
+      </div>
+      <div class="card-actions">
+        <button class="btn btn-outline btn-sm" onclick="adminOpenShiftDetail('${s.id}')">View / edit</button>
+        ${s.status === 'open' ? `<button class="btn btn-danger btn-sm" onclick="adminCancelShiftPrompt('${s.id}','${esc(fmtDate(s.bake_date))}')">Cancel</button>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+window.openCreateShiftModal = async function(preDate) {
+  const settings = await loadSettings();
+  const dflt = {
+    bake_date: preDate || todayISO(),
+    start_time: settings.default_shift_start_time || '06:00',
+    end_time:   settings.default_shift_end_time   || '12:00',
+    location:   settings.default_shift_location   || 'Lazar Family Bakehouse',
+    spots_total:'2'
+  };
+  openModal('Create shift', `
+    <div class="form-row">
+      <div class="fg"><label>Date</label><input id="ns-date" type="date" value="${dflt.bake_date}" /></div>
+      <div class="fg"><label>Start time</label><input id="ns-start" type="time" value="${dflt.start_time}" /></div>
+      <div class="fg"><label>End time (optional)</label><input id="ns-end" type="time" value="${dflt.end_time}" /></div>
+      <div class="fg"><label>Spots</label><input id="ns-spots" type="number" min="1" max="20" inputmode="numeric" value="${dflt.spots_total}" /></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Location</label><input id="ns-loc" value="${esc(dflt.location)}" /></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Notes (visible to contractors)</label><textarea id="ns-notes" rows="3" placeholder="What's being baked, special instructions, etc."></textarea></div>
+    </div>
+  `, [
+    { label:'Cancel', cls:'btn-outline', onClick: closeModal },
+    { label:'Create & notify contractors', cls:'btn-primary', onClick: async () => {
+      try {
+        await adminCreateShift({
+          bake_date:  v('ns-date'),
+          start_time: v('ns-start'),
+          end_time:   v('ns-end') || null,
+          location:   v('ns-loc'),
+          spots_total:v('ns-spots'),
+          notes:      v('ns-notes')
+        });
+        closeModal();
+        toast('Shift posted — contractors notified');
+        refreshActiveSection();
+      } catch (e) { toast(e.message || 'Create failed', {error:true}); }
+    }}
+  ]);
+};
+
+window.adminOpenShiftDetail = async function(shiftId) {
+  const { data: shift } = await sb.from('c_shifts').select('*').eq('id', shiftId).single();
+  const { data: signups } = await sb.from('c_shift_signups')
+    .select('*, contractor:c_contractors(first_name, last_name, email, phone)')
+    .eq('shift_id', shiftId).order('signed_up_at');
+  const active   = (signups||[]).filter(s => s.status === 'signed_up');
+  const released = (signups||[]).filter(s => s.status === 'released');
+  openModal(`Shift · ${fmtDateShort(shift.bake_date)}`, `
+    <div class="form-row">
+      <div class="fg"><label>Date</label><input id="es-date" type="date" value="${shift.bake_date}" /></div>
+      <div class="fg"><label>Start time</label><input id="es-start" type="time" value="${shift.start_time}" /></div>
+      <div class="fg"><label>End time</label><input id="es-end" type="time" value="${shift.end_time||''}" /></div>
+      <div class="fg"><label>Spots</label><input id="es-spots" type="number" min="1" max="20" value="${shift.spots_total}" /></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Location</label><input id="es-loc" value="${esc(shift.location)}" /></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Notes</label><textarea id="es-notes" rows="3">${esc(shift.notes||'')}</textarea></div>
+    </div>
+    <div style="margin-top:14px;">
+      <div style="font-weight:700;color:var(--brown-dk);font-size:.82rem;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Signed up (${active.length}/${shift.spots_total})</div>
+      ${active.length === 0 ? '<p style="color:var(--muted);font-size:.86rem;">No one signed up yet.</p>' : `
+        <ul style="list-style:none;padding:0;margin:0;">${active.map(s => `
+          <li style="padding:6px 0;border-bottom:1px solid var(--tan);font-size:.88rem;">
+            <strong>${esc(s.contractor.first_name||'')} ${esc(s.contractor.last_name||'')}</strong> · ${esc(s.contractor.email)}
+            ${s.contractor.phone ? `· ${esc(s.contractor.phone)}` : ''}
+          </li>
+        `).join('')}</ul>
+      `}
+      ${released.length ? `<div style="margin-top:8px;font-size:.78rem;color:var(--muted);">${released.length} released spot${released.length===1?'':'s'}</div>` : ''}
+    </div>
+  `, [
+    { label:'Close', cls:'btn-outline', onClick: closeModal },
+    { label:'Save changes', cls:'btn-primary', onClick: async () => {
+      try {
+        await adminUpdateShift(shiftId, {
+          bake_date: v('es-date'), start_time: v('es-start'),
+          end_time: v('es-end') || null, location: v('es-loc'),
+          spots_total: Number(v('es-spots'))||1, notes: v('es-notes')
+        });
+        closeModal();
+        toast('Saved');
+        refreshActiveSection();
+      } catch (e) { toast(e.message || 'Save failed', {error:true}); }
+    }}
+  ]);
+};
+
+window.adminCancelShiftPrompt = function(shiftId, dateLabel) {
+  openModal('Cancel shift?', `
+    <p style="font-size:.92rem;">Cancel the ${esc(dateLabel)} bake? Anyone signed up will be notified.</p>
+    <div class="fg" style="margin-top:10px;">
+      <label>Reason (optional, included in the email)</label>
+      <textarea id="cancel-reason" rows="2" placeholder="e.g. equipment issue, no orders"></textarea>
+    </div>
+  `, [
+    { label:'Keep shift', cls:'btn-outline', onClick: closeModal },
+    { label:'Cancel shift', cls:'btn-danger', onClick: async () => {
+      try {
+        await adminCancelShift(shiftId, v('cancel-reason'));
+        closeModal();
+        toast('Cancelled');
+        refreshActiveSection();
+      } catch (e) { toast(e.message || 'Cancel failed', {error:true}); }
+    }}
+  ]);
+};
+
+// ============================================================
+// ADMIN — AVAILABILITY (planning heatmap)
+// ============================================================
+const _adminAvState = { year: new Date().getFullYear(), month: new Date().getMonth() };
+
+async function renderAdminAvailability() {
+  const el = $('sec-a-availability');
+  el.innerHTML = '<div class="page-h">Availability</div><div class="page-sub">Loading…</div>';
+
+  const start = isoFromDate(new Date(_adminAvState.year, _adminAvState.month, 1));
+  const end   = isoFromDate(new Date(_adminAvState.year, _adminAvState.month + 1, 0));
+  const counts = await loadAvailabilityCounts(start, end);
+  const byDate = {};
+  (counts||[]).forEach(c => { byDate[c.the_date] = c; });
+
+  el.innerHTML = `
+    <div class="page-h">Availability</div>
+    <div class="page-sub">Who's free, when — plan bakes around your team</div>
+
+    <div class="cal-wrap">
+      <div class="cal-header">
+        <button class="cal-nav-btn" onclick="adminAvailPrev()">‹</button>
+        <div class="cal-month-label" id="aa-month-label"></div>
+        <button class="cal-nav-btn" onclick="adminAvailNext()">›</button>
+      </div>
+      <div class="cal-dow-row">
+        <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+      </div>
+      <div class="cal-grid" id="aa-grid"></div>
+      <div class="cal-legend">
+        <span>Tap a day to see who's free / busy and post a shift on that date.</span>
+      </div>
+    </div>
+  `;
+  renderAdminAvailabilityGrid(byDate);
+}
+
+function renderAdminAvailabilityGrid(byDate) {
+  const info = monthInfo(_adminAvState.year, _adminAvState.month);
+  $('aa-month-label').textContent = info.monthLabel;
+  const grid = $('aa-grid');
+  const today = todayISO();
+  grid.innerHTML = info.cells.map(c => {
+    if (c.blank) return '<div class="cal-day cd-blank"></div>';
+    const counts = byDate[c.iso] || { free_count:0, busy_count:0, tentative_count:0, total_active:0 };
+    const cls = ['cal-day','cd-heat'];
+    if (c.iso < today) cls.push('cd-past');
+    if (c.iso === today) cls.push('cd-today');
+    // Heatmap color: more free = greener
+    const free = counts.free_count;
+    if (free >= 4)      cls.push('cd-free');
+    else if (free >= 2) cls.push('cd-tentative');
+    else if (free === 0 && counts.busy_count > 0) cls.push('cd-busy');
+    return `
+      <div class="${cls.join(' ')}" onclick="adminAvailOpenDate('${c.iso}')">
+        <div class="cal-day-num">${c.day}</div>
+        <div class="cd-counts">
+          <span class="free-c">${counts.free_count}f</span>
+          ${counts.busy_count?`· <span class="busy-c">${counts.busy_count}b</span>`:''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+window.adminAvailPrev = function(){
+  if (_adminAvState.month === 0) { _adminAvState.year--; _adminAvState.month = 11; }
+  else _adminAvState.month--;
+  renderAdminAvailability();
+};
+window.adminAvailNext = function(){
+  if (_adminAvState.month === 11) { _adminAvState.year++; _adminAvState.month = 0; }
+  else _adminAvState.month++;
+  renderAdminAvailability();
+};
+
+window.adminAvailOpenDate = async function(iso) {
+  const rows = await loadAvailableContractorsForDate(iso);
+  const free = rows.filter(r => r.status === 'free');
+  const tent = rows.filter(r => r.status === 'tentative');
+  const busy = rows.filter(r => r.status === 'busy');
+  const unset= rows.filter(r => !r.status);
+  function rowList(arr, badgeCls){
+    if (!arr.length) return '<p style="color:var(--muted);font-size:.84rem;">None</p>';
+    return `<ul style="list-style:none;padding:0;margin:0 0 12px;">${arr.map(r => `
+      <li style="padding:5px 0;border-bottom:1px solid var(--tan);font-size:.88rem;">
+        <strong>${esc(r.first_name||'')} ${esc(r.last_name||'')}</strong>
+        <div style="font-size:.74rem;color:var(--muted);">${esc(r.email||'')}${r.note?` · "${esc(r.note)}"`:''}</div>
+      </li>`).join('')}</ul>`;
+  }
+  openModal(`Availability · ${fmtDate(iso)}`, `
+    <div style="font-weight:700;color:var(--accent-dk);font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;">Free (${free.length})</div>
+    ${rowList(free)}
+    ${tent.length?`<div style="font-weight:700;color:#7d6608;font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;">Tentative (${tent.length})</div>${rowList(tent)}`:''}
+    ${busy.length?`<div style="font-weight:700;color:var(--danger-dk);font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;">Busy (${busy.length})</div>${rowList(busy)}`:''}
+    ${unset.length?`<div style="font-weight:700;color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;">Not specified (${unset.length})</div>${rowList(unset)}`:''}
+  `, [
+    { label:'Close', cls:'btn-outline', onClick: closeModal },
+    { label:'+ Post shift on this date', cls:'btn-primary', onClick: () => { closeModal(); openCreateShiftModal(iso); }}
+  ]);
+};
+
+// ============================================================
+// ADMIN — APPROVALS
+// ============================================================
+async function renderAdminApprovals() {
+  const el = $('sec-a-approvals');
+  el.innerHTML = '<div class="page-h">Approvals</div><div class="page-sub">Loading…</div>';
+  const pending = await loadPendingApprovals();
+  el.innerHTML = `
+    <div class="page-h">Approvals</div>
+    <div class="page-sub">${pending.length} hour submission${pending.length===1?'':'s'} awaiting your review</div>
+    ${pending.length === 0
+      ? `<div class="panel"><p style="color:var(--muted);">No pending approvals. Once contractors submit hours for completed shifts they'll appear here.</p></div>`
+      : `<div class="card-list">${pending.map(p => approvalCardHtml(p)).join('')}</div>`
+    }
+  `;
+}
+
+function approvalCardHtml(p) {
+  return `
+    <div class="card">
+      <div class="card-hd">
+        <div>
+          <h3>${esc(p.contractor.first_name||'')} ${esc(p.contractor.last_name||'')}</h3>
+          <div class="card-sub">${esc(fmtDateShort(p.shift.bake_date))} · 📍 ${esc(p.shift.location)}</div>
+        </div>
+        <span class="badge b-pending">Submitted ${p.submitted_hours}h</span>
+      </div>
+      ${p.submitted_notes ? `<div class="card-body" style="font-size:.84rem;margin-bottom:8px;"><em>"${esc(p.submitted_notes)}"</em></div>` : ''}
+      <div class="form-row" style="margin-bottom:8px;">
+        <div class="fg"><label>Approve hours</label><input id="ap-h-${p.id}" type="number" step="0.25" min="0" max="24" value="${p.submitted_hours}" inputmode="decimal" /></div>
+        <div class="fg"><label>Admin note (visible to contractor)</label><input id="ap-n-${p.id}" value="" placeholder="optional" /></div>
+      </div>
+      <div class="card-actions">
+        <button class="btn btn-primary btn-sm" onclick="approveSubmission('${p.id}')">Approve</button>
+      </div>
+    </div>
+  `;
+}
+
+window.approveSubmission = async function(id) {
+  const h = $('ap-h-'+id).value;
+  const n = $('ap-n-'+id).value;
+  if (!h || Number(h) < 0) { toast('Enter hours', {error:true}); return; }
+  try {
+    await adminApproveHours(id, h, n);
+    toast('Approved');
+    refreshActiveSection();
+  } catch (e) { toast(e.message || 'Approval failed', {error:true}); }
+};
+
+// ============================================================
+// ADMIN — PAYMENTS
+// ============================================================
+async function renderAdminPayments() {
+  const el = $('sec-a-payments');
+  el.innerHTML = '<div class="page-h">Payments</div><div class="page-sub">Loading…</div>';
+  const ytd = await loadYTDSummary();
+  const rows = (ytd||[]).filter(r => r.status === 'active' && Number(r.unpaid_amount||0) > 0);
+
+  el.innerHTML = `
+    <div class="page-h">Payments</div>
+    <div class="page-sub">Per-contractor — record payments against approved hours</div>
+
+    <div class="panel">
+      <div class="panel-title">Outstanding (${rows.length})</div>
+      ${rows.length === 0 ? '<p style="color:var(--muted);font-size:.9rem;">Everyone paid in full. Nice.</p>' : `
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Contractor</th><th>Unpaid hrs</th><th>Owed</th><th></th></tr></thead>
+          <tbody>
+            ${rows.map(r => `
+              <tr>
+                <td><strong>${esc(r.first_name||'')} ${esc(r.last_name||'')}</strong></td>
+                <td>${Number(r.approved_hours||0).toFixed(1)} approved</td>
+                <td><strong>${fmtCur(r.unpaid_amount||0)}</strong></td>
+                <td><button class="btn btn-primary btn-sm" onclick="openPayContractor('${r.contractor_id}','${esc(r.first_name||'')} ${esc(r.last_name||'')}')">Pay</button></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table></div>
+      `}
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Payment history (all contractors)</div>
+      <div id="payment-history">${await renderPaymentHistoryAll()}</div>
+    </div>
+  `;
+}
+
+async function renderPaymentHistoryAll() {
+  const { data, error } = await sb.from('c_payments')
+    .select('*, contractor:c_contractors(first_name, last_name)')
+    .order('paid_on', { ascending: false })
+    .limit(50);
+  if (error) return `<p style="color:var(--muted);">${esc(error.message)}</p>`;
+  if (!data?.length) return '<p style="color:var(--muted);font-size:.9rem;">No payments recorded yet.</p>';
+  return `
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Paid</th><th>Contractor</th><th>Amount</th><th>Method</th><th>Reference</th></tr></thead>
+      <tbody>
+        ${data.map(p => `
+          <tr>
+            <td>${esc(fmtDateShort(p.paid_on))}</td>
+            <td>${esc(p.contractor.first_name||'')} ${esc(p.contractor.last_name||'')}</td>
+            <td><strong>${fmtCur(p.amount)}</strong></td>
+            <td>${esc(p.method)}</td>
+            <td>${esc(p.reference||'—')}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table></div>
+  `;
+}
+
+window.openPayContractor = async function(contractorId, name) {
+  const unpaid = await loadUnpaidApprovedHours(contractorId);
+  const total = unpaid.reduce((s,u) => s + Number(u.approved_amount||0), 0);
+  openModal(`Pay ${name}`, `
+    <p style="font-size:.86rem;color:var(--muted);margin-bottom:10px;">${unpaid.length} approved shift${unpaid.length===1?'':'s'} totalling <strong>${fmtCur(total)}</strong>. By default all selected; uncheck any you don't want included in this payment.</p>
+    <div id="pay-subs" style="max-height:200px;overflow-y:auto;border:1px solid var(--tan);border-radius:4px;padding:10px;margin-bottom:12px;background:var(--cream-lt);">
+      ${unpaid.map(u => `
+        <label style="display:flex;gap:8px;align-items:center;padding:5px 0;font-size:.86rem;">
+          <input type="checkbox" class="pay-sub-cb" value="${u.id}" data-amount="${u.approved_amount}" checked />
+          <span>${esc(fmtDateShort(u.shift.bake_date))} · ${u.approved_hours}h · <strong>${fmtCur(u.approved_amount)}</strong></span>
+        </label>
+      `).join('')}
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Amount paid</label><input id="pay-amt" type="number" step="0.01" min="0" value="${total.toFixed(2)}" inputmode="decimal" /></div>
+      <div class="fg"><label>Method</label><select id="pay-method">
+        <option value="check">Check</option><option value="venmo">Venmo</option>
+        <option value="zelle">Zelle</option><option value="cash">Cash</option>
+        <option value="other">Other</option>
+      </select></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Paid on</label><input id="pay-date" type="date" value="${todayISO()}" /></div>
+      <div class="fg"><label>Reference (check #, txn ID)</label><input id="pay-ref" /></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Notes (internal)</label><textarea id="pay-notes" rows="2"></textarea></div>
+    </div>
+  `, [
+    { label:'Cancel', cls:'btn-outline', onClick: closeModal },
+    { label:'Record payment', cls:'btn-primary', onClick: async () => {
+      const checks = document.querySelectorAll('.pay-sub-cb:checked');
+      const submissionIds = Array.from(checks).map(cb => cb.value);
+      try {
+        await adminCreatePayment({
+          contractor_id: contractorId,
+          amount: v('pay-amt'),
+          method: $('pay-method').value,
+          paid_on: v('pay-date'),
+          reference: v('pay-ref'),
+          notes: v('pay-notes'),
+          submissionIds
+        });
+        closeModal();
+        toast('Payment recorded');
+        refreshActiveSection();
+      } catch (e) { toast(e.message || 'Payment failed', {error:true}); }
+    }}
+  ]);
+  // Re-tally amount as checkboxes change
+  document.querySelectorAll('.pay-sub-cb').forEach(cb => cb.addEventListener('change', () => {
+    const t = Array.from(document.querySelectorAll('.pay-sub-cb:checked'))
+      .reduce((s,el) => s + Number(el.dataset.amount||0), 0);
+    $('pay-amt').value = t.toFixed(2);
+  }));
+};
+
+// ============================================================
+// ADMIN — CONTRACTORS
+// ============================================================
+async function renderAdminContractors() {
+  const el = $('sec-a-contractors');
+  el.innerHTML = '<div class="page-h">Contractors</div><div class="page-sub">Loading…</div>';
+  const all = await loadAllContractors({});
+  el.innerHTML = `
+    <div class="page-h">Contractors</div>
+    <div class="page-sub">Add, edit, deactivate</div>
+
+    <div class="panel-actions" style="margin-bottom:14px;">
+      <button class="btn btn-primary" onclick="openAddContractorModal()">+ Add contractor</button>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">All (${all.length})</div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Pay rate</th><th>Phone</th><th></th></tr></thead>
+        <tbody>
+          ${all.map(c => `
+            <tr>
+              <td><strong>${esc(c.first_name||'')} ${esc(c.last_name||'')}</strong><div style="font-size:.74rem;color:var(--muted);">${esc(c.email)}</div></td>
+              <td><span class="badge ${c.role==='admin'?'b-paid':'b-inactive'}">${esc(c.role)}</span></td>
+              <td><span class="badge ${c.status==='active'?'b-active':'b-inactive'}">${esc(c.status)}</span></td>
+              <td>${fmtCur(c.pay_rate||0)}</td>
+              <td>${esc(c.phone||'—')}</td>
+              <td>
+                <button class="btn btn-outline btn-sm" onclick="openEditContractorModal('${c.id}')">Edit</button>
+              </td>
+            </tr>
+          `).join('') || '<tr><td class="empty-row" colspan="6">No contractors yet</td></tr>'}
+        </tbody>
+      </table></div>
+    </div>
+  `;
+}
+
+window.openAddContractorModal = function() {
+  openModal('Add contractor', `
+    <div class="form-row">
+      <div class="fg"><label>First name</label><input id="ac-first" /></div>
+      <div class="fg"><label>Last name</label><input id="ac-last" /></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Email</label><input id="ac-email" type="email" autocapitalize="none" /></div>
+      <div class="fg"><label>Phone</label><input id="ac-phone" type="tel" /></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Pay rate ($/hr)</label><input id="ac-rate" type="number" step="0.01" min="0" /></div>
+      <div class="fg"><label>Role</label><select id="ac-role">
+        <option value="contractor">Contractor</option>
+        <option value="admin">Admin</option>
+      </select></div>
+    </div>
+    <p style="font-size:.8rem;color:var(--muted);margin-top:6px;">After saving, you can send them a magic-link invite. They click it to set their password.</p>
+  `, [
+    { label:'Cancel', cls:'btn-outline', onClick: closeModal },
+    { label:'Add & send invite', cls:'btn-primary', onClick: async () => {
+      try {
+        await adminCreateContractor({
+          email: v('ac-email'),
+          first_name: v('ac-first'),
+          last_name:  v('ac-last'),
+          phone: v('ac-phone'),
+          pay_rate: v('ac-rate'),
+          role: $('ac-role').value
+        });
+        // Try sending the invite
+        try {
+          await adminSendInvite(v('ac-email'));
+          toast('Created — invite email sent');
+        } catch (e) {
+          toast('Created — but invite email failed: '+(e.message||''), {error:true});
+        }
+        closeModal();
+        refreshActiveSection();
+      } catch (e) { toast(e.message || 'Add failed', {error:true}); }
+    }}
+  ]);
+};
+
+window.openEditContractorModal = async function(id) {
+  const { data: c, error } = await sb.from('c_contractors').select('*').eq('id', id).single();
+  if (error) { toast(error.message,{error:true}); return; }
+  const docs = await loadDocumentsFor(id);
+  openModal(`Edit · ${c.first_name||''} ${c.last_name||''}`, `
+    <div class="form-row">
+      <div class="fg"><label>First name</label><input id="ec-first" value="${esc(c.first_name||'')}" /></div>
+      <div class="fg"><label>Last name</label><input id="ec-last" value="${esc(c.last_name||'')}" /></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Email</label><input value="${esc(c.email)}" readonly /></div>
+      <div class="fg"><label>Phone</label><input id="ec-phone" type="tel" value="${esc(c.phone||'')}" /></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Pay rate ($/hr)</label><input id="ec-rate" type="number" step="0.01" min="0" value="${c.pay_rate||0}" /></div>
+      <div class="fg"><label>Role</label><select id="ec-role">
+        <option value="contractor" ${c.role==='contractor'?'selected':''}>Contractor</option>
+        <option value="admin" ${c.role==='admin'?'selected':''}>Admin</option>
+      </select></div>
+      <div class="fg"><label>Status</label><select id="ec-status">
+        <option value="active" ${c.status==='active'?'selected':''}>Active</option>
+        <option value="inactive" ${c.status==='inactive'?'selected':''}>Inactive</option>
+      </select></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Admin notes (private)</label><textarea id="ec-notes" rows="2">${esc(c.admin_notes||'')}</textarea></div>
+    </div>
+    <div style="margin-top:14px;">
+      <div style="font-weight:700;color:var(--brown-dk);font-size:.82rem;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Documents</div>
+      ${docs.length === 0 ? '<p style="color:var(--muted);font-size:.84rem;">No documents on file.</p>'
+        : docs.map(d => docItemHtml(d, false)).join('')}
+    </div>
+  `, [
+    { label:'Close', cls:'btn-outline', onClick: closeModal },
+    { label:'Resend invite', cls:'btn-gold', onClick: async () => {
+      try { await adminSendInvite(c.email); toast('Invite sent'); }
+      catch (e) { toast(e.message || 'Invite failed', {error:true}); }
+    }},
+    { label:'Save', cls:'btn-primary', onClick: async () => {
+      try {
+        await adminUpdateContractor(id, {
+          first_name: v('ec-first'),
+          last_name:  v('ec-last'),
+          phone:      v('ec-phone'),
+          pay_rate:   Number(v('ec-rate'))||0,
+          role:       $('ec-role').value,
+          status:     $('ec-status').value,
+          admin_notes:v('ec-notes')
+        });
+        closeModal();
+        toast('Saved');
+        refreshActiveSection();
+      } catch (e) { toast(e.message || 'Save failed', {error:true}); }
+    }}
+  ]);
+};
+
+// ============================================================
+// ADMIN — AUDIT LOG
+// ============================================================
+async function renderAdminAudit() {
+  const el = $('sec-a-audit');
+  el.innerHTML = '<div class="page-h">Audit log</div><div class="page-sub">Loading…</div>';
+  const rows = await loadAuditLog({ limit: 200 });
+  el.innerHTML = `
+    <div class="page-h">Audit log</div>
+    <div class="page-sub">Most recent 200 entries</div>
+    <div class="panel">
+      ${rows.length === 0 ? '<p style="color:var(--muted);">Nothing logged yet.</p>'
+        : rows.map(r => `
+          <div class="audit-item">
+            <div>
+              <span class="audit-action">${esc(r.action)}</span>
+              <strong>${esc(r.actor_email||'system')}</strong>
+              <span class="audit-time">· ${esc(fmtDateShort(r.created_at))} ${new Date(r.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
+            </div>
+            <div class="audit-time">${esc(r.entity_type)} · ${esc((r.entity_id||'').slice(0,8))}…</div>
+            ${r.before && r.after ? `<details style="margin-top:4px;"><summary style="font-size:.74rem;color:var(--muted);cursor:pointer;">View diff</summary><div class="audit-diff">${esc(JSON.stringify(diffJson(r.before, r.after), null, 2))}</div></details>` : ''}
+          </div>
+        `).join('')}
+    </div>
+  `;
+}
+
+function diffJson(before, after) {
+  const out = {};
+  for (const k of new Set([...Object.keys(before||{}), ...Object.keys(after||{})])) {
+    if (JSON.stringify(before?.[k]) !== JSON.stringify(after?.[k])) {
+      out[k] = { from: before?.[k], to: after?.[k] };
+    }
+  }
+  return Object.keys(out).length ? out : '(no field changes)';
+}
+
+// ============================================================
+// ADMIN — SETTINGS
+// ============================================================
+async function renderAdminSettings() {
+  const el = $('sec-a-settings');
+  el.innerHTML = '<div class="page-h">Settings</div><div class="page-sub">Loading…</div>';
+  const settings = await loadSettings();
+  el.innerHTML = `
+    <div class="page-h">Settings</div>
+    <div class="page-sub">Defaults and integrations</div>
+
+    <div class="panel">
+      <div class="panel-title">Default shift values</div>
+      <p style="font-size:.84rem;color:var(--muted);">Used as the starting values when you create a new shift.</p>
+      <div class="form-row">
+        <div class="fg"><label>Default location</label><input id="set-loc" value="${esc(settings.default_shift_location||'')}" /></div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>Default start time</label><input id="set-start" type="time" value="${esc(settings.default_shift_start_time||'06:00')}" /></div>
+        <div class="fg"><label>Default end time</label><input id="set-end" type="time" value="${esc(settings.default_shift_end_time||'12:00')}" /></div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>Portal URL (used in emails)</label><input id="set-url" value="${esc(settings.portal_url||'')}" /></div>
+        <div class="fg"><label>Stale availability days</label><input id="set-stale" type="number" min="1" value="${esc(settings.stale_availability_days||'30')}" /></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="saveSettings()">Save settings</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Email notifications</div>
+      <p style="font-size:.88rem;">
+        Status: <strong>${EMAILJS_ENABLED ? '<span style="color:var(--accent-dk);">ENABLED</span>' : '<span style="color:var(--warn);">DISABLED (stub mode)</span>'}</strong>
+      </p>
+      <p style="font-size:.84rem;color:var(--muted);line-height:1.5;">
+        Email sending is wired but currently stubbed (every send is console-logged, not delivered). To enable: create a separate EmailJS account (see <code>docs/EMAILJS.md</code>), create the 8 templates from <code>PHASE1_EMAIL_TEMPLATES.md</code>, then paste the Public Key, Service ID, and 8 Template IDs into the <code>CONFIG</code> block at the top of <code>index.html</code> and set <code>EMAILJS_ENABLED = true</code>.
+      </p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Maintenance</div>
+      <div class="form-actions">
+        <button class="btn btn-outline" onclick="runCompletePastShifts()">Mark past shifts as completed</button>
+      </div>
+      <p style="font-size:.78rem;color:var(--muted);margin-top:6px;">Run this occasionally — it sets any open shifts whose dates have passed to status=completed.</p>
+    </div>
+  `;
+}
+
+window.saveSettings = async function() {
+  const updates = [
+    { key:'default_shift_location',   value:v('set-loc') },
+    { key:'default_shift_start_time', value:v('set-start') },
+    { key:'default_shift_end_time',   value:v('set-end') },
+    { key:'portal_url',               value:v('set-url') },
+    { key:'stale_availability_days',  value:v('set-stale') }
+  ];
+  try {
+    for (const u of updates) {
+      const { error } = await sb.from('c_settings').upsert(u);
+      if (error) throw error;
+    }
+    toast('Saved');
+  } catch (e) { toast(e.message || 'Save failed', {error:true}); }
+};
+
+window.runCompletePastShifts = async function() {
+  try {
+    const { data, error } = await sb.rpc('c_complete_past_shifts');
+    if (error) throw error;
+    toast(`${data||0} shift${data===1?'':'s'} marked completed`);
+  } catch (e) { toast(e.message || 'Failed', {error:true}); }
+};
+
+</script>
+</body>
+</html>
