@@ -664,26 +664,29 @@ tbody td { padding:10px 12px; color:var(--brown-dk); vertical-align:top; }
     <div class="login-logo">
       <div class="mark">🥖</div>
       <h1>Lazar Family Bakehouse</h1>
-      <p>Contractor Portal</p>
+      <p id="login-mode-subtitle">Contractor Portal</p>
     </div>
     <div class="login-card">
-      <div class="lf">
+      <div class="lf" id="login-email-field">
         <label for="login-email">Email</label>
         <input id="login-email" type="email" autocomplete="username" inputmode="email" autocapitalize="none" />
       </div>
       <div class="lf">
-        <label for="login-password">Password</label>
-        <input id="login-password" type="password" autocomplete="current-password" />
+        <label for="login-password" id="login-password-label">PIN</label>
+        <input id="login-password" type="password" autocomplete="current-password" inputmode="numeric" placeholder="6-digit PIN from admin" />
       </div>
       <button class="login-btn" id="login-submit" onclick="signIn()">Sign In</button>
       <div class="login-error" id="login-error"></div>
-      <div class="login-hint">
-        <button class="login-link" onclick="sendResetEmail()">Forgot password?</button>
+      <div class="login-hint" id="login-hint-area">
+        <span style="color:var(--muted);">Forgot your PIN? Ask admin to reset it.</span>
       </div>
-      <div class="login-hint" style="margin-top:18px; padding-top:14px; border-top:1px solid var(--tan); line-height:1.5;">
-        First time here? Check your email for the invite link from Lazar Family Bakehouse. If you didn't receive one, reach out to admin.
+      <div class="login-hint" id="login-first-time" style="margin-top:18px; padding-top:14px; border-top:1px solid var(--tan); line-height:1.5;">
+        First time here? Admin will share your email and PIN. Enter them above and click Sign In.
       </div>
     </div>
+  </div>
+  <div id="admin-toggle-corner" style="position:fixed;bottom:14px;left:14px;z-index:10;">
+    <button id="admin-toggle-btn" onclick="toggleAdminLogin()" style="background:none;border:none;color:var(--muted);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;opacity:.45;transition:opacity .2s;font-family:'Nunito',sans-serif;padding:6px 8px;" onmouseenter="this.style.opacity='.85'" onmouseleave="this.style.opacity=document.body.dataset.loginMode==='admin'?'.85':'.45'">Admin</button>
   </div>
 </div>
 
@@ -887,23 +890,59 @@ function resetInactivityTimer(){
 /* ============================================================
    AUTH
    ============================================================ */
+const ADMIN_LOGIN_EMAIL = 'info@lazarfamilybakehouse.com';
+
+function toggleAdminLogin() {
+  const mode = document.body.dataset.loginMode === 'admin' ? 'contractor' : 'admin';
+  document.body.dataset.loginMode = mode;
+  const emailField = $('login-email-field');
+  const pwLabel    = $('login-password-label');
+  const pwInput    = $('login-password');
+  const subtitle   = $('login-mode-subtitle');
+  const firstTime  = $('login-first-time');
+  const hintArea   = $('login-hint-area');
+  const adminBtn   = $('admin-toggle-btn');
+  if (mode === 'admin') {
+    emailField.style.display = 'none';
+    pwLabel.textContent = 'Admin PIN';
+    pwInput.placeholder = 'Admin PIN';
+    subtitle.textContent = 'Admin Login';
+    firstTime.style.display = 'none';
+    hintArea.innerHTML = '<button class="login-link" onclick="toggleAdminLogin()">&larr; Back to contractor login</button>';
+    adminBtn.style.opacity = '.85';
+    pwInput.focus();
+  } else {
+    emailField.style.display = '';
+    pwLabel.textContent = 'PIN';
+    pwInput.placeholder = '6-digit PIN from admin';
+    subtitle.textContent = 'Contractor Portal';
+    firstTime.style.display = '';
+    hintArea.innerHTML = '<span style="color:var(--muted);">Forgot your PIN? Ask admin to reset it.</span>';
+    adminBtn.style.opacity = '.45';
+  }
+  $('login-error').textContent = '';
+}
+
 async function signIn() {
   const btn = $('login-submit');
   const err = $('login-error');
   err.textContent = '';
-  const email = v('login-email').toLowerCase();
+  const isAdmin = document.body.dataset.loginMode === 'admin';
+  const email = isAdmin ? ADMIN_LOGIN_EMAIL : v('login-email').toLowerCase();
   const password = v('login-password');
-  if (!email || !password) { err.textContent = 'Email and password are required.'; return; }
+  if (!email || !password) {
+    err.textContent = isAdmin ? 'Enter the admin PIN.' : 'Email and PIN are required.';
+    return;
+  }
   btn.disabled = true;
   btn.textContent = 'Signing in…';
   try {
     const { data, error } = await sb.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+    if (error) throw new Error(isAdmin ? 'Incorrect admin PIN.' : 'Email or PIN is wrong. Check with admin.');
 
-    // Load the contractor row for this user.
     const { data: me, error: meErr } = await sb.rpc('c_me');
     if (meErr) throw meErr;
-    if (!me || !me.id) throw new Error('No contractor profile linked to this account. Contact admin.');
+    if (!me || !me.id) throw new Error('No profile linked to this account. Contact admin.');
     if (me.status !== 'active') throw new Error('Your account is not active. Contact admin.');
 
     session = { user: data.user, contractor: me, role: me.role };
@@ -927,6 +966,7 @@ async function signOut() {
   $('login-screen').style.display = 'flex';
   $('login-password').value = '';
   $('login-error').textContent = '';
+  if (document.body.dataset.loginMode === 'admin') toggleAdminLogin();
 }
 
 async function sendResetEmail() {
@@ -987,8 +1027,8 @@ const ADMIN_SECTIONS = [
   { id:'a-approvals',    label:'Approvals',    icon:'✅' },
   { id:'a-payments',     label:'Payments',     icon:'💵' },
   { id:'a-contractors',  label:'Contractors',  icon:'👥' },
-  { id:'a-audit',        label:'Audit',        icon:'📜' },
   { id:'a-settings',     label:'Settings',     icon:'⚙️' }
+  // Audit log hidden from nav (triggers still capture data; restore by adding {id:'a-audit', label:'Audit', icon:'📜'} back to this array)
 ];
 const CONTRACTOR_SECTIONS = [
   { id:'c-home',         label:'Home',         icon:'🏠' },
@@ -1325,14 +1365,15 @@ async function loadUnpaidApprovedHours(contractorId) {
 // SHARED ACTION HELPERS
 // ============================================================
 
-async function adminCreateContractor({ email, first_name, last_name, phone, pay_rate, role }) {
+async function adminCreateContractor({ email, first_name, last_name, phone, pay_rate, role, pin }) {
   if (!email || !first_name) throw new Error('Email and first name required');
   const { data, error } = await sb.from('c_contractors').insert({
     email: email.toLowerCase().trim(),
     first_name, last_name: last_name||'', phone: phone||'',
     pay_rate: Number(pay_rate)||0,
     role: role==='admin' ? 'admin' : 'contractor',
-    status: 'active'
+    status: 'active',
+    pin: pin || null
   }).select().single();
   if (error) throw error;
   return data;
@@ -2345,9 +2386,31 @@ async function renderAdminDashboard() {
   const near600    = activeContractors.filter(r => Number(r.earned_amount||0) >= 500 && Number(r.earned_amount||0) < 600).length;
   const openTotal  = openShifts.reduce((s,sh) => s + sh.spots_left, 0);
 
+  // Top-of-dashboard callout: total outstanding and who owes
+  const owedRows = activeContractors.filter(r => Number(r.unpaid_amount||0) > 0)
+    .sort((a,b) => Number(b.unpaid_amount||0) - Number(a.unpaid_amount||0));
+  const owedNames = owedRows.map(r => `${r.first_name||''} ${r.last_name||''}`.trim()).filter(Boolean);
+
   el.innerHTML = `
     <div class="page-h">Admin Dashboard</div>
     <div class="page-sub">${new Date().getFullYear()} year-to-date</div>
+
+    ${totalUnpaid > 0 ? `
+      <div class="panel" style="border-left:4px solid var(--warn);background:var(--warn-bg);">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:.74rem;text-transform:uppercase;letter-spacing:.1em;color:#7d6608;font-weight:700;">Outstanding to pay</div>
+            <div style="font-family:'Playfair Display',serif;font-size:2.4rem;font-weight:700;color:var(--brown-dk);line-height:1.1;margin-top:4px;">${fmtCur(totalUnpaid)}</div>
+            <div style="font-size:.85rem;color:#7d6608;margin-top:6px;">${owedRows.length} contractor${owedRows.length===1?'':'s'} owed${owedNames.length?' &middot; '+esc(owedNames.slice(0,5).join(', '))+(owedNames.length>5?` +${owedNames.length-5} more`:''):''}</div>
+          </div>
+          <button class="btn btn-primary" onclick="showSection('a-payments')">Pay now</button>
+        </div>
+      </div>
+    ` : `
+      <div class="panel" style="border-left:4px solid var(--accent);">
+        <div style="font-family:'Playfair Display',serif;font-size:1.15rem;color:var(--brown-dk);">All caught up &mdash; nothing outstanding.</div>
+      </div>
+    `}
 
     <div class="stats-grid">
       <div class="stat-card"><div class="sl">Active contractors</div><div class="sv">${activeContractors.filter(r=>r.first_name).length}</div></div>
@@ -2882,6 +2945,7 @@ async function renderAdminContractors() {
 }
 
 window.openAddContractorModal = function() {
+  const randomPin = String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
   openModal('Add contractor', `
     <div class="form-row">
       <div class="fg"><label>First name</label><input id="ac-first" /></div>
@@ -2892,31 +2956,40 @@ window.openAddContractorModal = function() {
       <div class="fg"><label>Phone</label><input id="ac-phone" type="tel" /></div>
     </div>
     <div class="form-row">
-      <div class="fg"><label>Pay rate ($/hr)</label><input id="ac-rate" type="number" step="0.01" min="0" /></div>
+      <div class="fg"><label>Pay rate ($/hr)</label><input id="ac-rate" type="number" step="0.01" min="0" value="19" /></div>
       <div class="fg"><label>Role</label><select id="ac-role">
         <option value="contractor">Contractor</option>
         <option value="admin">Admin</option>
       </select></div>
     </div>
-    <p style="font-size:.8rem;color:var(--muted);margin-top:6px;">After saving, you can send them a magic-link invite. They click it to set their password.</p>
+    <div class="form-row">
+      <div class="fg"><label>PIN (4-12 chars)</label><input id="ac-pin" value="${randomPin}" style="font-family:ui-monospace,Menlo,monospace;letter-spacing:.05em;" />
+        <div class="help">Auto-generated. Edit if you want something memorable. Share with contractor.</div>
+      </div>
+    </div>
+    <p style="font-size:.8rem;color:var(--muted);margin-top:6px;">Saving will create their login (email + PIN) and a contractor profile. Tell them the PIN out of band (text, call).</p>
   `, [
     { label:'Cancel', cls:'btn-outline', onClick: closeModal },
-    { label:'Add & send invite', cls:'btn-primary', onClick: async () => {
+    { label:'Add & activate login', cls:'btn-primary', onClick: async () => {
+      const email = v('ac-email').toLowerCase();
+      const pin = v('ac-pin');
+      if (!email || !pin || pin.length < 4) { toast('Email and a 4+ char PIN required', {error:true}); return; }
       try {
         await adminCreateContractor({
-          email: v('ac-email'),
+          email,
           first_name: v('ac-first'),
           last_name:  v('ac-last'),
           phone: v('ac-phone'),
           pay_rate: v('ac-rate'),
-          role: $('ac-role').value
+          role: $('ac-role').value,
+          pin
         });
-        // Try sending the invite
         try {
-          await adminSendInvite(v('ac-email'));
-          toast('Created — invite email sent');
+          const { error: authErr } = await sb.auth.signUp({ email, password: pin });
+          if (authErr && !String(authErr.message||'').toLowerCase().includes('already')) throw authErr;
+          toast(`Created. Login: ${email} / ${pin}`);
         } catch (e) {
-          toast('Created — but invite email failed: '+(e.message||''), {error:true});
+          toast('Profile created — but login activation failed: '+(e.message||''), {error:true});
         }
         closeModal();
         refreshActiveSection();
@@ -2952,6 +3025,18 @@ window.openEditContractorModal = async function(id) {
     <div class="form-row">
       <div class="fg"><label>Admin notes (private)</label><textarea id="ec-notes" rows="2">${esc(c.admin_notes||'')}</textarea></div>
     </div>
+    <div class="panel" style="background:var(--cream-lt);padding:12px;margin-top:8px;border-left:3px solid var(--accent);">
+      <div style="font-weight:700;color:var(--brown-dk);font-size:.82rem;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Login PIN</div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <code id="ec-pin-display" style="font-size:1.4rem;font-family:ui-monospace,Menlo,monospace;background:var(--white);padding:4px 12px;border:1px solid var(--tan);border-radius:4px;color:var(--brown-dk);letter-spacing:.1em;">${esc(c.pin||'(none — click Generate)')}</code>
+        <button class="btn btn-outline btn-sm" onclick="generateNewPin('${c.id}')">Generate new PIN</button>
+        <button class="btn btn-outline btn-sm" onclick="copyPin()">Copy</button>
+      </div>
+      <p style="font-size:.74rem;color:var(--muted);margin-top:8px;line-height:1.4;">
+        Share this PIN with the contractor (text/call). They sign in with their email + this PIN.
+        ${!c.user_id ? "<br><strong>Note:</strong> This contractor doesn't have a login account yet. Click 'Activate Login' to create one with this PIN." : ''}
+      </p>
+    </div>
     <div style="margin-top:14px;">
       <div style="font-weight:700;color:var(--brown-dk);font-size:.82rem;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Documents</div>
       ${docs.length === 0 ? '<p style="color:var(--muted);font-size:.84rem;">No documents on file.</p>'
@@ -2959,10 +3044,16 @@ window.openEditContractorModal = async function(id) {
     </div>
   `, [
     { label:'Close', cls:'btn-outline', onClick: closeModal },
-    { label:'Resend invite', cls:'btn-gold', onClick: async () => {
-      try { await adminSendInvite(c.email); toast('Invite sent'); }
-      catch (e) { toast(e.message || 'Invite failed', {error:true}); }
-    }},
+    ...(!c.user_id ? [{ label:'Activate Login', cls:'btn-gold', onClick: async () => {
+      const pin = document.getElementById('ec-pin-display').textContent.trim();
+      if (!pin || pin.startsWith('(')) { toast('Generate a PIN first', {error:true}); return; }
+      try {
+        const { error } = await sb.auth.signUp({ email: c.email, password: pin });
+        if (error) throw error;
+        toast('Login activated — contractor can sign in now');
+        refreshActiveSection();
+      } catch (e) { toast(e.message || 'Activation failed', {error:true}); }
+    }}] : []),
     { label:'Save', cls:'btn-primary', onClick: async () => {
       try {
         await adminUpdateContractor(id, {
@@ -2980,6 +3071,23 @@ window.openEditContractorModal = async function(id) {
       } catch (e) { toast(e.message || 'Save failed', {error:true}); }
     }}
   ]);
+};
+
+window.generateNewPin = async function(contractorId) {
+  try {
+    const { data, error } = await sb.rpc('c_regenerate_contractor_pin', { p_contractor_id: contractorId });
+    if (error) throw error;
+    document.getElementById('ec-pin-display').textContent = data;
+    toast('New PIN generated — share with contractor');
+  } catch (e) { toast(e.message || 'Failed', {error:true}); }
+};
+
+window.copyPin = async function() {
+  const pin = document.getElementById('ec-pin-display').textContent.trim();
+  try {
+    await navigator.clipboard.writeText(pin);
+    toast('PIN copied to clipboard');
+  } catch (e) { toast('Copy failed — select manually', {error:true}); }
 };
 
 // ============================================================
@@ -3075,6 +3183,35 @@ window.saveSettings = async function() {
     { key:'default_shift_start_time', value:v('set-start') },
     { key:'default_shift_end_time',   value:v('set-end') },
     { key:'portal_url',               value:v('set-url') },
+    { key:'stale_availability_days',  value:v('set-stale') }
+  ];
+  try {
+    for (const u of updates) {
+      const { error } = await sb.from('c_settings').upsert(u);
+      if (error) throw error;
+    }
+    toast('Saved');
+  } catch (e) { toast(e.message || 'Save failed', {error:true}); }
+};
+
+window.runCompletePastShifts = async function() {
+  try {
+    const { data, error } = await sb.rpc('c_complete_past_shifts');
+    if (error) throw error;
+    toast(`${data||0} shift${data===1?'':'s'} marked completed`);
+  } catch (e) { toast(e.message || 'Failed', {error:true}); }
+};
+
+</script>
+</body>
+</html>
+pt>
+</body>
+</html>
+t>
+</body>
+</html>
+    value:v('set-url') },
     { key:'stale_availability_days',  value:v('set-stale') }
   ];
   try {
