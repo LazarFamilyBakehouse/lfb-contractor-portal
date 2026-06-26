@@ -2977,6 +2977,7 @@ async function renderAdminContractors() {
 
     <div class="panel-actions" style="margin-bottom:14px;">
       <button class="btn btn-primary" onclick="openAddContractorModal()">+ Add contractor</button>
+      <button class="btn btn-gold" onclick="activateAllLogins()">⚡ Activate all unlinked logins</button>
     </div>
 
     <div class="panel">
@@ -3730,6 +3731,50 @@ async function renderAdminGuide() {
     </div>
   `;
 }
+
+
+// ============================================================
+// BULK: activate logins for all contractors that don't have one
+// ============================================================
+window.activateAllLogins = async function() {
+  const { data: rows, error } = await sb.from('c_contractors')
+    .select('id, email, pin, first_name, last_name, user_id')
+    .is('user_id', null)
+    .not('email', 'is', null)
+    .not('pin', 'is', null);
+  if (error) { toast(error.message, {error:true}); return; }
+  if (!rows || rows.length === 0) { toast('All contractors already have logins activated'); return; }
+
+  if (!confirm(`Activate Supabase Auth logins for ${rows.length} contractor${rows.length===1?'':'s'}?\n\nEach gets a login account using their PIN as the password. They'll then be able to sign in with email + PIN.\n\nIMPORTANT: Supabase email confirmation must be OFF for instant login (Dashboard -> Authentication -> Sign In / Up -> uncheck 'Confirm email'). If it's on, contractors will get a confirmation email first.`)) return;
+
+  let ok = 0, fail = 0;
+  const failures = [];
+  for (const c of rows) {
+    try {
+      const { error: signupErr } = await sb.auth.signUp({ email: c.email, password: c.pin });
+      if (signupErr) {
+        if (String(signupErr.message||'').toLowerCase().includes('already')) {
+          ok++;  // already exists, counts as ok
+        } else {
+          throw signupErr;
+        }
+      } else {
+        ok++;
+      }
+    } catch (e) {
+      fail++;
+      failures.push(`${c.first_name||c.email}: ${e.message||e}`);
+    }
+    // Small delay between calls so Supabase doesn't rate-limit
+    await new Promise(r => setTimeout(r, 300));
+  }
+  if (fail === 0) {
+    toast(`Activated ${ok} login${ok===1?'':'s'}. Contractors can now sign in with email + PIN.`);
+  } else {
+    alert(`Done.\nSucceeded: ${ok}\nFailed: ${fail}\n\nFailures:\n${failures.join('\n')}`);
+  }
+  refreshActiveSection();
+};
 
 </script>
 </body>
