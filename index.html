@@ -3608,6 +3608,81 @@ window.adminPromoteShift = async function(shiftId) {
   } catch (e) { toast(e.message || 'Failed', {error:true}); }
 };
 
+
+// ============================================================
+// ADMIN — GUIDE (orientation for admin)
+// ============================================================
+async function renderAdminGuide() {
+  const el = $('sec-a-guide');
+  el.innerHTML = `
+    <div class="page-h">Admin Guide</div>
+    <div class="page-sub">How to run the contractor portal</div>
+
+    <div class="panel">
+      <div class="panel-title">Quick start</div>
+      <p style="font-size:.95rem;line-height:1.6;">
+        This portal runs the contractor side of LFB end-to-end. Contractors sign in to mark availability, sign up for shifts, submit hours, and see their pay. You manage the bake schedule, approve hours, record payments, and onboard new contractors.
+      </p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Your tabs</div>
+      <ul style="list-style:none;padding:0;margin:0;font-size:.92rem;line-height:1.8;">
+        <li><strong>📊 Dashboard</strong> &mdash; outstanding to pay (front and center), YTD totals, per-contractor table with 1099 flags and food-card expirations.</li>
+        <li><strong>🍞 Shifts</strong> &mdash; create new bake shifts. Supports multiple start times (9 / 11 / 1) and tentative status for unconfirmed bakes. Past shifts shown for reference.</li>
+        <li><strong>📅 Availability</strong> &mdash; calendar heatmap. Tap any day to see which contractors are free / busy / tentative, and post a shift directly from that date.</li>
+        <li><strong>✅ Approvals</strong> &mdash; contractors submit hours after each shift; approve (and edit) here. Approved hours snapshot the pay rate at that moment, so future rate changes don't rewrite history.</li>
+        <li><strong>💵 Payments</strong> &mdash; per contractor, see what they're owed and record payment (check / Venmo / Zelle / cash). Click "Pay" &rarr; check the hour records this payment covers &rarr; enter amount and method.</li>
+        <li><strong>👥 Contractors</strong> &mdash; add / edit / deactivate. Each row has a "History" button (full hours + payments timeline) and "Edit" (profile + PIN management). Use "Generate new PIN" to rotate; share PIN with contractor out of band.</li>
+        <li><strong>🤝 Referrals</strong> &mdash; contractors can refer friends. They show up here as "new" &mdash; update status as you process each one.</li>
+        <li><strong>⚙️ Settings</strong> &mdash; defaults for new shifts (location, start/end times), EmailJS configuration status, maintenance tools.</li>
+      </ul>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Common workflows</div>
+      <ol style="padding-left:20px;font-size:.92rem;line-height:1.8;">
+        <li><strong>Onboard a new contractor:</strong> Contractors &rarr; "+ Add contractor" &rarr; fill in details and PIN (auto-generated, edit if you want) &rarr; click "Add &amp; activate login" &rarr; text/call them the PIN.</li>
+        <li><strong>Post a new bake:</strong> Shifts &rarr; "+ New shift" &rarr; date, start time(s), location, spots, notes &rarr; choose Open (notifies contractors) or Tentative (locked until promoted).</li>
+        <li><strong>Approve hours after a bake:</strong> Approvals &rarr; review each submission, tweak hours if needed, add an optional note for the contractor &rarr; Approve.</li>
+        <li><strong>Pay people:</strong> Payments &rarr; click "Pay" on a contractor's row &rarr; tick which hour records this payment covers (all selected by default) &rarr; method + reference + paid date &rarr; record.</li>
+        <li><strong>Check what you owe:</strong> Dashboard top card. Click "Pay now" to jump straight to payments.</li>
+        <li><strong>Plan around availability:</strong> Availability &rarr; tap a date &rarr; see who's free &rarr; post the shift right from the modal.</li>
+      </ol>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">PIN management</div>
+      <p style="font-size:.92rem;line-height:1.6;">
+        Every contractor has a 6-digit PIN. They sign in with their email + PIN at the main login screen. You sign in via the small "Admin" link in the bottom-left of the login screen (uses your existing wholesale-portal password as the admin PIN).
+      </p>
+      <p style="font-size:.92rem;line-height:1.6;margin-top:8px;">
+        To rotate a contractor's PIN: Contractors &rarr; click their row &rarr; "Edit" &rarr; "Generate new PIN" &rarr; "Copy" &rarr; share with them. Their old PIN stops working immediately. <strong>Note:</strong> for imported contractors who don't have a login yet, click "Activate Login" first to create their auth account with the displayed PIN.
+      </p>
+    </div>
+
+    <div class="panel" style="background:var(--cream-lt);border-left:3px solid var(--accent);">
+      <div class="panel-title">Coming next (Phase 3+)</div>
+      <ul style="list-style:disc;padding-left:20px;font-size:.92rem;line-height:1.7;">
+        <li>PDF contract generation with contractor e-signature, stored privately in Supabase</li>
+        <li>24-hour shift reminder emails (requires EmailJS or Resend activation)</li>
+        <li>SMS shift-fill alerts via Twilio for urgent fills</li>
+      </ul>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Where things live</div>
+      <ul style="list-style:none;padding:0;margin:0;font-size:.86rem;line-height:1.8;color:var(--muted);">
+        <li><strong>Code:</strong> <a href="https://github.com/LazarFamilyBakehouse/lfb-contractor-portal" target="_blank" style="color:var(--accent-dk);">github.com/LazarFamilyBakehouse/lfb-contractor-portal</a></li>
+        <li><strong>Database:</strong> <a href="https://supabase.com/dashboard/project/ylvoswzsijigyezqvaat" target="_blank" style="color:var(--accent-dk);">Supabase dashboard</a> (shared with wholesale portal)</li>
+        <li><strong>Hosting:</strong> GitHub Pages, auto-deploys ~60s after each commit to main</li>
+        <li><strong>DNS:</strong> Hostinger (CNAME contractors &rarr; lazarfamilybakehouse.github.io)</li>
+        <li><strong>Audit log:</strong> Hidden from the UI but still captured; restore by editing index.html &rarr; ADMIN_SECTIONS</li>
+      </ul>
+    </div>
+  `;
+}
+
 </script>
 </body>
 </html>
