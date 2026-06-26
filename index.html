@@ -1011,7 +1011,7 @@ async function bootApp() {
   $('hdr-subtitle').textContent = session.role === 'admin' ? 'Admin Dashboard' : 'Contractor Portal';
   buildNav();
   buildContent();
-  const firstSection = session.role === 'admin' ? 'a-dashboard' : 'c-home';
+  const firstSection = session.role === 'admin' ? 'a-guide' : 'c-guide';
   showSection(firstSection);
   setupRealtime();
   renderNotifBanner();
@@ -1021,21 +1021,25 @@ async function bootApp() {
    NAV
    ============================================================ */
 const ADMIN_SECTIONS = [
+  { id:'a-guide',        label:'Guide',        icon:'📖' },
   { id:'a-dashboard',    label:'Dashboard',    icon:'📊' },
   { id:'a-shifts',       label:'Shifts',       icon:'🍞' },
   { id:'a-availability', label:'Availability', icon:'📅' },
   { id:'a-approvals',    label:'Approvals',    icon:'✅' },
   { id:'a-payments',     label:'Payments',     icon:'💵' },
   { id:'a-contractors',  label:'Contractors',  icon:'👥' },
+  { id:'a-referrals',    label:'Referrals',    icon:'🤝' },
   { id:'a-settings',     label:'Settings',     icon:'⚙️' }
   // Audit log hidden from nav (triggers still capture data; restore by adding {id:'a-audit', label:'Audit', icon:'📜'} back to this array)
 ];
 const CONTRACTOR_SECTIONS = [
+  { id:'c-guide',        label:'Guide',        icon:'📖' },
   { id:'c-home',         label:'Home',         icon:'🏠' },
   { id:'c-schedule',     label:'Schedule',     icon:'📅' },
   { id:'c-myshifts',     label:'My Shifts',    icon:'📋' },
   { id:'c-availability', label:'Availability', icon:'🗓️' },
   { id:'c-payments',     label:'Payments',     icon:'💵' },
+  { id:'c-referrals',    label:'Referrals',    icon:'🤝' },
   { id:'c-profile',      label:'Profile',      icon:'👤' }
 ];
 
@@ -1161,12 +1165,16 @@ SECTION_RENDERERS['a-audit']        = renderAdminAudit;
 SECTION_RENDERERS['a-settings']     = renderAdminSettings;
 
 /* --- CONTRACTOR sections --- */
+SECTION_RENDERERS['c-guide']        = renderContractorGuide;
 SECTION_RENDERERS['c-home']         = renderContractorHome;
 SECTION_RENDERERS['c-schedule']     = renderContractorSchedule;
 SECTION_RENDERERS['c-myshifts']     = renderContractorMyShifts;
 SECTION_RENDERERS['c-availability'] = renderContractorAvailability;
 SECTION_RENDERERS['c-payments']     = renderContractorPayments;
 SECTION_RENDERERS['c-profile']      = renderContractorProfile;
+SECTION_RENDERERS['c-referrals']    = renderContractorReferrals;
+SECTION_RENDERERS['a-referrals']    = renderAdminReferrals;
+SECTION_RENDERERS['a-guide']        = renderAdminGuide;
 
 /* ============================================================
    PLACEHOLDER RENDERERS
