@@ -1397,6 +1397,7 @@ async function adminUpdateContractor(id, updates) {
 }
 
 async function adminCreateShift(shift) {
+  const status = ['open','tentative','cancelled','completed'].includes(shift.status) ? shift.status : 'open';
   const payload = {
     bake_date:   shift.bake_date,
     start_time:  shift.start_time,
@@ -1405,11 +1406,12 @@ async function adminCreateShift(shift) {
     spots_total: Number(shift.spots_total) || 1,
     notes:       shift.notes || '',
     created_by:  session.contractor.id,
-    status:      'open'
+    status:      status,
+    start_times: shift.start_times || null
   };
   const { data, error } = await sb.from('c_shifts').insert(payload).select().single();
   if (error) throw error;
-  // notify all active contractors (stubbed)
+  if (status !== 'open') return data;
   const contractors = await loadAllContractors({ activeOnly:true });
   const others = contractors.filter(c => c.role !== 'admin');
   await notifyMany('shift_new', others, c => ({
@@ -1452,12 +1454,14 @@ async function adminCancelShift(id, reason) {
   }));
 }
 
-async function contractorSignUpForShift(shiftId) {
-  const { data, error } = await sb.from('c_shift_signups').insert({
+async function contractorSignUpForShift(shiftId, chosenStartTime) {
+  const payload = {
     shift_id: shiftId,
     contractor_id: session.contractor.id,
     status: 'signed_up'
-  }).select('*, shift:c_shifts(*)').single();
+  };
+  if (chosenStartTime) payload.chosen_start_time = chosenStartTime;
+  const { data, error } = await sb.from('c_shift_signups').insert(payload).select('*, shift:c_shifts(*)').single();
   if (error) throw error;
   await notify('signup_confirm', {
     to_email:    session.contractor.email,
@@ -1722,22 +1726,40 @@ async function renderContractorHome() {
 }
 
 function shiftCardHtml(s, contractorView) {
-  const urgent = (contractorView && s.spots_left > 0 && daysFromToday(s.bake_date) <= 2);
+  const urgent = (contractorView && s.spots_left > 0 && daysFromToday(s.bake_date) <= 2 && s.status === 'open');
   const fillBar = `${s.spots_filled}/${s.spots_total} signed up`;
-  const action = contractorView
-    ? (s.i_signed_up
-        ? `<button class="btn btn-outline btn-sm" disabled>Signed up</button>`
-        : (s.spots_left > 0
-            ? `<button class="btn btn-primary btn-sm" onclick="signUpForShift('${s.id}')">Sign up</button>`
-            : `<button class="btn btn-outline btn-sm" disabled>Full</button>`))
-    : `<button class="btn btn-outline btn-sm" onclick="adminOpenShiftDetail('${s.id}')">View / edit</button>`;
+  const isTentative = s.status === 'tentative';
+  const startTimesDisplay = (s.start_times && s.start_times.length > 0)
+    ? s.start_times.map(t => fmtTime(t)).join(' / ')
+    : fmtTime(s.start_time) + (s.end_time ? '–' + fmtTime(s.end_time) : '');
+  let action;
+  if (contractorView) {
+    if (isTentative) {
+      action = `<button class="btn btn-outline btn-sm" disabled>Tentative — locked</button>`;
+    } else if (s.i_signed_up) {
+      action = `<button class="btn btn-outline btn-sm" disabled>Signed up</button>`;
+    } else if (s.spots_left > 0) {
+      const hasMultiStarts = s.start_times && s.start_times.length > 0;
+      action = hasMultiStarts
+        ? `<button class="btn btn-primary btn-sm" onclick="openSignupStartPicker('${s.id}')">Sign up</button>`
+        : `<button class="btn btn-primary btn-sm" onclick="signUpForShift('${s.id}')">Sign up</button>`;
+    } else {
+      action = `<button class="btn btn-outline btn-sm" disabled>Full</button>`;
+    }
+  } else {
+    action = `<button class="btn btn-outline btn-sm" onclick="adminOpenShiftDetail('${s.id}')">View / edit</button>`;
+    if (isTentative) {
+      action = `<button class="btn btn-gold btn-sm" onclick="adminPromoteShift('${s.id}')">Promote to Open</button> ` + action;
+    }
+  }
   return `
-    <div class="card">
+    <div class="card" ${isTentative ? 'style="opacity:.85;border-left-color:var(--warn);"' : ''}>
       <div class="card-hd">
         <div>
-          <h3>${esc(fmtDateShort(s.bake_date))} · ${esc(fmtTime(s.start_time))}${s.end_time?'–'+esc(fmtTime(s.end_time)):''}</h3>
+          <h3>${esc(fmtDateShort(s.bake_date))} · ${esc(startTimesDisplay)}</h3>
           <div class="card-sub">📍 ${esc(s.location)}</div>
         </div>
+        ${isTentative ? `<span class="badge b-warn">TENTATIVE</span>` : ''}
         ${urgent ? `<span class="badge b-danger">URGENT · ${daysFromToday(s.bake_date)===0?'TODAY':daysFromToday(s.bake_date)+' day'+(daysFromToday(s.bake_date)===1?'':'s')}</span>` : ''}
         ${s.status === 'cancelled' ? `<span class="badge b-cancelled">Cancelled</span>` : ''}
       </div>
@@ -1782,7 +1804,7 @@ window.releaseSignupConfirm = function(signupId, dateLabel) {
 async function renderContractorSchedule() {
   const el = $('sec-c-schedule');
   el.innerHTML = '<div class="page-h">Schedule</div><div class="page-sub">Loading…</div>';
-  const shifts = await loadShiftsWithCounts({ from: todayISO(), statuses: ['open'] });
+  const shifts = await loadShiftsWithCounts({ from: todayISO(), statuses: ['open', 'tentative'] });
   if (!shifts.length) {
     el.innerHTML = `
       <div class="page-h">Schedule</div>
@@ -2534,30 +2556,46 @@ window.openCreateShiftModal = async function(preDate) {
   openModal('Create shift', `
     <div class="form-row">
       <div class="fg"><label>Date</label><input id="ns-date" type="date" value="${dflt.bake_date}" /></div>
-      <div class="fg"><label>Start time</label><input id="ns-start" type="time" value="${dflt.start_time}" /></div>
       <div class="fg"><label>End time (optional)</label><input id="ns-end" type="time" value="${dflt.end_time}" /></div>
       <div class="fg"><label>Spots</label><input id="ns-spots" type="number" min="1" max="20" inputmode="numeric" value="${dflt.spots_total}" /></div>
     </div>
     <div class="form-row">
+      <div class="fg">
+        <label>Start time(s)</label>
+        <input id="ns-start" type="time" value="${dflt.start_time}" />
+        <div id="ns-extra-starts"></div>
+        <button type="button" class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="addStartTimeRow()">+ Add another start time</button>
+        <div class="help">Stack start times if contractors can start at different times (e.g. 9 AM, 11 AM, 1 PM). Contractors pick one when they sign up.</div>
+      </div>
+    </div>
+    <div class="form-row">
       <div class="fg"><label>Location</label><input id="ns-loc" value="${esc(dflt.location)}" /></div>
+      <div class="fg"><label>Status</label><select id="ns-status">
+        <option value="open">Open (contractors can sign up immediately)</option>
+        <option value="tentative">Tentative (locked — promote to Open when confirmed)</option>
+      </select></div>
     </div>
     <div class="form-row">
       <div class="fg"><label>Notes (visible to contractors)</label><textarea id="ns-notes" rows="3" placeholder="What's being baked, special instructions, etc."></textarea></div>
     </div>
   `, [
     { label:'Cancel', cls:'btn-outline', onClick: closeModal },
-    { label:'Create & notify contractors', cls:'btn-primary', onClick: async () => {
+    { label:'Create', cls:'btn-primary', onClick: async () => {
       try {
+        const starts = collectStartTimes();
         await adminCreateShift({
           bake_date:  v('ns-date'),
           start_time: v('ns-start'),
           end_time:   v('ns-end') || null,
           location:   v('ns-loc'),
           spots_total:v('ns-spots'),
-          notes:      v('ns-notes')
+          notes:      v('ns-notes'),
+          status:     $('ns-status').value,
+          start_times: starts
         });
         closeModal();
-        toast('Shift posted — contractors notified');
+        const stat = $('ns-status').value;
+        toast(stat === 'tentative' ? 'Shift saved as tentative (not posted to contractors yet)' : 'Shift posted — contractors notified');
         refreshActiveSection();
       } catch (e) { toast(e.message || 'Create failed', {error:true}); }
     }}
@@ -2934,6 +2972,7 @@ async function renderAdminContractors() {
               <td>${fmtCur(c.pay_rate||0)}</td>
               <td>${esc(c.phone||'—')}</td>
               <td>
+                <button class="btn btn-outline btn-sm" onclick="openContractorHistory('${c.id}')">History</button>
                 <button class="btn btn-outline btn-sm" onclick="openEditContractorModal('${c.id}')">Edit</button>
               </td>
             </tr>
@@ -3202,32 +3241,370 @@ window.runCompletePastShifts = async function() {
   } catch (e) { toast(e.message || 'Failed', {error:true}); }
 };
 
-</script>
-</body>
-</html>
-pt>
-</body>
-</html>
-t>
-</body>
-</html>
-    value:v('set-url') },
-    { key:'stale_availability_days',  value:v('set-stale') }
-  ];
+
+// ============================================================
+// CONTRACTOR — GUIDE (onboarding / what's where)
+// ============================================================
+async function renderContractorGuide() {
+  const el = $('sec-c-guide');
+  const c = session.contractor;
+  el.innerHTML = `
+    <div class="page-h">Welcome${c.first_name ? ', '+esc(c.first_name) : ''}</div>
+    <div class="page-sub">A quick guide to the portal</div>
+
+    <div class="panel">
+      <div class="panel-title">What this portal does</div>
+      <p style="font-size:.95rem;line-height:1.6;color:var(--brown-dk);">
+        This is your home base for working with Lazar Family Bakehouse. You can see upcoming bake shifts,
+        sign up for ones that work for you, mark your availability, submit hours after each shift, and
+        track your payments &mdash; all in one place.
+      </p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">The tabs at the top</div>
+      <ul style="list-style:none;padding:0;margin:0;font-size:.92rem;line-height:1.8;">
+        <li><strong>🏠 Home</strong> &mdash; your dashboard. Next shift, YTD totals, profile reminders.</li>
+        <li><strong>📅 Schedule</strong> &mdash; upcoming bake shifts. Tap to sign up for any with open spots.</li>
+        <li><strong>📋 My Shifts</strong> &mdash; shifts you've signed up for, plus the form to submit hours after each bake.</li>
+        <li><strong>🗓️ Availability</strong> &mdash; tap any future day to mark yourself as Free / Busy / Tentative. The more dates you fill, the better we can plan around you.</li>
+        <li><strong>💵 Payments</strong> &mdash; what's been paid, what's pending, and your full payment history.</li>
+        <li><strong>🤝 Referrals</strong> &mdash; know someone who'd be a good baker? Submit their info here.</li>
+        <li><strong>👤 Profile</strong> &mdash; your contact info, emergency contact, food handler card, and documents (W-9, etc).</li>
+      </ul>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Typical workflow</div>
+      <ol style="padding-left:20px;font-size:.92rem;line-height:1.8;color:var(--brown-dk);">
+        <li>Check <strong>Availability</strong> &mdash; mark which weekends/weekdays you can work for the next few months.</li>
+        <li>Watch <strong>Schedule</strong> for new shifts. When one shows up that you're free for, click <em>Sign up</em>.</li>
+        <li>Show up and bake.</li>
+        <li>Come back the same day, open <strong>My Shifts</strong>, click <em>Submit hours</em> on the shift you just worked. Admin reviews and approves.</li>
+        <li>Check <strong>Payments</strong> to see your YTD totals and when each payment lands.</li>
+      </ol>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Need to bow out of a shift you signed up for?</div>
+      <p style="font-size:.92rem;line-height:1.6;">
+        Go to <strong>My Shifts</strong>, find the upcoming shift, click <em>Release spot</em>. Other contractors
+        get notified that the spot opened up. Please release as early as you know &mdash; the more lead time, the
+        easier to find someone to fill in.
+      </p>
+    </div>
+
+    <div class="panel" style="background:var(--cream-lt);border-left:3px solid var(--accent);">
+      <div class="panel-title">Questions?</div>
+      <p style="font-size:.92rem;">Reach out to admin: <a href="mailto:info@lazarfamilybakehouse.com" style="color:var(--accent-dk);">info@lazarfamilybakehouse.com</a></p>
+    </div>
+  `;
+}
+
+// ============================================================
+// CONTRACTOR — REFERRALS
+// ============================================================
+async function renderContractorReferrals() {
+  const el = $('sec-c-referrals');
+  el.innerHTML = '<div class="page-h">Referrals</div><div class="page-sub">Loading…</div>';
+  const { data: mine, error } = await sb.from('c_referrals')
+    .select('*')
+    .eq('contractor_id', session.contractor.id)
+    .order('created_at', { ascending: false });
+  if (error) { toast(error.message,{error:true}); return; }
+  const statusBadge = (s) => {
+    const map = { new:'b-pending', reviewed:'b-confirmed', contacted:'b-confirmed', hired:'b-active', declined:'b-inactive', archived:'b-inactive' };
+    return `<span class="badge ${map[s]||'b-inactive'}">${esc(s)}</span>`;
+  };
+  el.innerHTML = `
+    <div class="page-h">Referrals</div>
+    <div class="page-sub">Know a great baker? Send them our way.</div>
+
+    <div class="panel">
+      <div class="panel-title">Refer someone</div>
+      <div class="form-row">
+        <div class="fg"><label>Their name</label><input id="ref-name" /></div>
+        <div class="fg"><label>How to reach them (email or phone)</label><input id="ref-contact" /></div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>Anything we should know? (optional)</label><textarea id="ref-comments" rows="3" placeholder="e.g. baking experience, when they're available, your relationship"></textarea></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="submitReferral()">Send referral</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Your referrals (${mine.length})</div>
+      ${mine.length === 0 ? `<p style="color:var(--muted);font-size:.9rem;">None yet.</p>` : `
+        <div class="card-list">
+          ${mine.map(r => `
+            <div class="card">
+              <div class="card-hd">
+                <div>
+                  <h3>${esc(r.referee_name)}</h3>
+                  <div class="card-sub">${esc(r.referee_contact)} &middot; submitted ${esc(fmtDateShort(r.created_at))}</div>
+                </div>
+                ${statusBadge(r.status)}
+              </div>
+              ${r.comments ? `<div class="card-body" style="font-size:.86rem;"><em>"${esc(r.comments)}"</em></div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      `}
+    </div>
+  `;
+}
+
+window.submitReferral = async function() {
+  const name = v('ref-name');
+  const contact = v('ref-contact');
+  const comments = v('ref-comments');
+  if (!name || !contact) { toast('Name and contact required', {error:true}); return; }
   try {
-    for (const u of updates) {
-      const { error } = await sb.from('c_settings').upsert(u);
-      if (error) throw error;
-    }
-    toast('Saved');
-  } catch (e) { toast(e.message || 'Save failed', {error:true}); }
+    const { error } = await sb.from('c_referrals').insert({
+      contractor_id: session.contractor.id,
+      referee_name: name,
+      referee_contact: contact,
+      comments
+    });
+    if (error) throw error;
+    toast('Referral submitted — admin will reach out');
+    refreshActiveSection();
+  } catch (e) { toast(e.message || 'Submit failed', {error:true}); }
 };
 
-window.runCompletePastShifts = async function() {
+// ============================================================
+// ADMIN — REFERRALS
+// ============================================================
+async function renderAdminReferrals() {
+  const el = $('sec-a-referrals');
+  el.innerHTML = '<div class="page-h">Referrals</div><div class="page-sub">Loading…</div>';
+  const { data, error } = await sb.from('c_referrals')
+    .select('*, contractor:c_contractors(first_name, last_name, email)')
+    .order('created_at', { ascending: false });
+  if (error) { toast(error.message,{error:true}); return; }
+  const open = data.filter(r => r.status === 'new');
+  const handled = data.filter(r => r.status !== 'new');
+  const statusBadge = (s) => {
+    const map = { new:'b-pending', reviewed:'b-confirmed', contacted:'b-confirmed', hired:'b-active', declined:'b-inactive', archived:'b-inactive' };
+    return `<span class="badge ${map[s]||'b-inactive'}">${esc(s)}</span>`;
+  };
+  function row(r) {
+    return `
+      <div class="card">
+        <div class="card-hd">
+          <div>
+            <h3>${esc(r.referee_name)}</h3>
+            <div class="card-sub">${esc(r.referee_contact)}</div>
+            <div class="card-sub" style="margin-top:4px;">From: ${esc(r.contractor?.first_name||'')} ${esc(r.contractor?.last_name||'')} &middot; ${esc(fmtDateShort(r.created_at))}</div>
+          </div>
+          ${statusBadge(r.status)}
+        </div>
+        ${r.comments ? `<div class="card-body" style="font-size:.86rem;"><em>"${esc(r.comments)}"</em></div>` : ''}
+        ${r.admin_notes ? `<div class="card-body" style="font-size:.84rem;color:var(--muted);">Admin notes: ${esc(r.admin_notes)}</div>` : ''}
+        <div class="card-actions">
+          <select id="ref-status-${r.id}" style="padding:6px 10px;border:1px solid var(--tan);border-radius:4px;font-family:'Nunito',sans-serif;">
+            ${['new','reviewed','contacted','hired','declined','archived'].map(s => `<option value="${s}" ${r.status===s?'selected':''}>${s}</option>`).join('')}
+          </select>
+          <button class="btn btn-outline btn-sm" onclick="updateReferralStatus('${r.id}')">Update status</button>
+          <button class="btn btn-outline btn-sm" onclick="addReferralNote('${r.id}')">Add note</button>
+        </div>
+      </div>
+    `;
+  }
+  el.innerHTML = `
+    <div class="page-h">Referrals</div>
+    <div class="page-sub">${open.length} new &middot; ${handled.length} handled</div>
+    ${open.length ? `
+      <div class="panel">
+        <div class="panel-title">New (${open.length})</div>
+        <div class="card-list">${open.map(row).join('')}</div>
+      </div>
+    ` : ''}
+    ${handled.length ? `
+      <div class="panel">
+        <div class="panel-title">Handled</div>
+        <div class="card-list">${handled.map(row).join('')}</div>
+      </div>
+    ` : ''}
+    ${data.length === 0 ? '<div class="panel"><p style="color:var(--muted);">No referrals yet.</p></div>' : ''}
+  `;
+}
+
+window.updateReferralStatus = async function(id) {
+  const newStatus = document.getElementById('ref-status-'+id).value;
   try {
-    const { data, error } = await sb.rpc('c_complete_past_shifts');
+    const { error } = await sb.from('c_referrals').update({
+      status: newStatus,
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: session.contractor.id
+    }).eq('id', id);
     if (error) throw error;
-    toast(`${data||0} shift${data===1?'':'s'} marked completed`);
+    toast('Status updated');
+    refreshActiveSection();
+  } catch (e) { toast(e.message || 'Failed', {error:true}); }
+};
+
+window.addReferralNote = function(id) {
+  openModal('Add admin note', `
+    <div class="fg"><label>Notes</label><textarea id="ref-admin-note" rows="3"></textarea></div>
+  `, [
+    { label:'Cancel', cls:'btn-outline', onClick: closeModal },
+    { label:'Save note', cls:'btn-primary', onClick: async () => {
+      try {
+        const { error } = await sb.from('c_referrals').update({ admin_notes: v('ref-admin-note') }).eq('id', id);
+        if (error) throw error;
+        closeModal();
+        toast('Saved');
+        refreshActiveSection();
+      } catch (e) { toast(e.message || 'Failed', {error:true}); }
+    }}
+  ]);
+};
+
+// ============================================================
+// ADMIN — PER-CONTRACTOR HISTORY MODAL
+// ============================================================
+window.openContractorHistory = async function(contractorId) {
+  openModal('Loading history...', '<p style="color:var(--muted);">Fetching...</p>', [
+    { label:'Close', cls:'btn-outline', onClick: closeModal }
+  ]);
+  const [contractor, hours, payments] = await Promise.all([
+    sb.from('c_contractors').select('*').eq('id', contractorId).single().then(r => r.data),
+    sb.from('c_hour_submissions').select('*, shift:c_shifts(bake_date, location)').eq('contractor_id', contractorId).order('approved_at', { ascending: false, nullsFirst: false }),
+    sb.from('c_payments').select('*').eq('contractor_id', contractorId).order('paid_on', { ascending: false })
+  ]);
+  const hoursRows = hours.data || [];
+  const payRows = payments.data || [];
+  const totalHours = hoursRows.reduce((s,h) => s + (h.status==='approved' ? Number(h.approved_hours||0) : 0), 0);
+  const totalEarned = hoursRows.reduce((s,h) => s + (h.status==='approved' ? Number(h.approved_amount||0) : 0), 0);
+  const totalPaid = payRows.reduce((s,p) => s + Number(p.amount||0), 0);
+  const timeline = [];
+  hoursRows.forEach(h => {
+    timeline.push({
+      date: h.approved_at || h.submitted_at,
+      sortKey: h.approved_at || h.submitted_at,
+      type: 'hours',
+      label: `${h.approved_hours||h.submitted_hours} hrs · ${h.shift ? fmtDateShort(h.shift.bake_date) + ' bake' : 'shift'}`,
+      amount: h.status==='approved' ? Number(h.approved_amount||0) : null,
+      status: h.status
+    });
+  });
+  payRows.forEach(p => {
+    timeline.push({
+      date: p.paid_on,
+      sortKey: p.paid_on + 'T23:00:00',
+      type: 'payment',
+      label: `Paid · ${p.method}${p.reference ? ' · ' + p.reference : ''}`,
+      amount: -Number(p.amount||0),
+      status: 'paid'
+    });
+  });
+  timeline.sort((a,b) => (b.sortKey||'').localeCompare(a.sortKey||''));
+
+  openModal(`${contractor.first_name||''} ${contractor.last_name||''} — Full history`, `
+    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">
+      <div class="stat-card" style="border-top-color:var(--accent);"><div class="sl">Total hours</div><div class="sv">${totalHours.toFixed(1)}</div></div>
+      <div class="stat-card" style="border-top-color:var(--accent);"><div class="sl">Total earned</div><div class="sv">${fmtCur(totalEarned)}</div></div>
+      <div class="stat-card" style="border-top-color:var(--accent);"><div class="sl">Total paid</div><div class="sv">${fmtCur(totalPaid)}</div></div>
+    </div>
+    ${Math.abs(totalEarned - totalPaid) > 0.01 ? `
+      <p style="font-size:.84rem;color:${totalEarned > totalPaid ? 'var(--danger)' : 'var(--muted)'};">
+        ${totalEarned > totalPaid ? `Currently owed: <strong>${fmtCur(totalEarned - totalPaid)}</strong>` : `Overpaid by: ${fmtCur(totalPaid - totalEarned)}`}
+      </p>
+    ` : ''}
+    <div style="font-weight:700;font-size:.76rem;text-transform:uppercase;letter-spacing:.08em;color:var(--brown-dk);margin:14px 0 6px;">Timeline</div>
+    ${timeline.length === 0 ? '<p style="color:var(--muted);font-size:.9rem;">No history yet.</p>' : `
+      <div style="max-height:50vh;overflow-y:auto;border:1px solid var(--tan);border-radius:4px;">
+        ${timeline.map(t => `
+          <div style="padding:8px 12px;border-bottom:1px solid var(--cream-dk);display:flex;align-items:center;gap:10px;font-size:.86rem;">
+            <span style="min-width:80px;color:var(--muted);font-size:.78rem;">${esc(fmtDateShort(t.date))}</span>
+            <span style="flex:1;color:var(--brown-dk);">${esc(t.label)}</span>
+            ${t.amount !== null ? `<span style="font-weight:700;color:${t.amount < 0 ? 'var(--accent-dk)' : 'var(--brown-dk)'};min-width:90px;text-align:right;">${t.amount < 0 ? '-' : ''}${fmtCur(Math.abs(t.amount))}</span>` : '<span></span>'}
+            <span style="min-width:80px;text-align:right;"><span class="badge b-${t.status==='paid'?'paid':t.status==='approved'?'approved':'pending'}" style="font-size:.66rem;">${esc(t.status)}</span></span>
+          </div>
+        `).join('')}
+      </div>
+    `}
+  `, [
+    { label:'Close', cls:'btn-outline', onClick: closeModal },
+    { label:'Edit contractor', cls:'btn-primary', onClick: () => { closeModal(); openEditContractorModal(contractorId); }}
+  ]);
+};
+
+// ============================================================
+// MULTI-START helpers + admin promote tentative
+// ============================================================
+window.addStartTimeRow = function() {
+  const container = document.getElementById('ns-extra-starts');
+  if (!container) return;
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:6px;align-items:center;margin-top:6px;';
+  row.innerHTML = `
+    <input type="time" class="ns-extra-start" style="padding:8px 10px;border:1px solid var(--tan);border-radius:4px;flex:1;" />
+    <button type="button" onclick="this.parentNode.remove()" style="background:none;border:none;color:var(--danger);font-size:1.2rem;cursor:pointer;">×</button>
+  `;
+  container.appendChild(row);
+};
+
+function collectStartTimes() {
+  const primary = (v('ns-start') || '').trim();
+  if (!primary) return null;
+  const extras = Array.from(document.querySelectorAll('.ns-extra-start'))
+    .map(el => el.value.trim()).filter(Boolean);
+  if (extras.length === 0) return null;
+  return [primary, ...extras];
+}
+
+window.openSignupStartPicker = async function(shiftId) {
+  const { data: shift } = await sb.from('c_shifts').select('*').eq('id', shiftId).single();
+  if (!shift || !shift.start_times || shift.start_times.length === 0) {
+    return signUpForShift(shiftId);
+  }
+  openModal(`Pick your start time · ${fmtDateShort(shift.bake_date)}`, `
+    <p style="font-size:.92rem;color:var(--brown-dk);margin-bottom:14px;">This shift has multiple start times. Which works for you?</p>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      ${shift.start_times.map((t, i) => `
+        <label style="display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--tan);border-radius:4px;cursor:pointer;background:var(--cream-lt);">
+          <input type="radio" name="signup-start" value="${esc(t)}" ${i===0?'checked':''} />
+          <strong style="font-size:1rem;">${esc(fmtTime(t))}</strong>
+        </label>
+      `).join('')}
+    </div>
+  `, [
+    { label:'Cancel', cls:'btn-outline', onClick: closeModal },
+    { label:'Sign up', cls:'btn-primary', onClick: async () => {
+      const chosen = document.querySelector('input[name="signup-start"]:checked')?.value;
+      try {
+        await contractorSignUpForShift(shiftId, chosen);
+        closeModal();
+        toast('Signed up');
+        refreshActiveSection();
+      } catch (e) { toast(e.message || 'Sign-up failed', {error:true}); }
+    }}
+  ]);
+};
+
+window.adminPromoteShift = async function(shiftId) {
+  if (!confirm('Promote this tentative shift to Open? Contractors will be notified.')) return;
+  try {
+    await sb.from('c_shifts').update({ status: 'open' }).eq('id', shiftId);
+    const { data: shift } = await sb.from('c_shifts').select('*').eq('id', shiftId).single();
+    const contractors = await loadAllContractors({ activeOnly:true });
+    const others = contractors.filter(c => c.role !== 'admin');
+    await notifyMany('shift_new', others, c => ({
+      to_email:   c.email,
+      first_name: c.first_name,
+      bake_date:  fmtDate(shift.bake_date),
+      start_time: fmtTime(shift.start_time),
+      location:   shift.location,
+      spots_total:String(shift.spots_total),
+      shift_notes:shift.notes || '(none)',
+      portal_url: PORTAL_URL
+    }));
+    toast('Shift promoted to open — contractors notified');
+    refreshActiveSection();
   } catch (e) { toast(e.message || 'Failed', {error:true}); }
 };
 
