@@ -685,8 +685,8 @@ tbody td { padding:10px 12px; color:var(--brown-dk); vertical-align:top; }
       </div>
     </div>
   </div>
-  <div id="admin-toggle-corner" style="position:fixed;bottom:14px;left:14px;z-index:10;">
-    <button id="admin-toggle-btn" onclick="toggleAdminLogin()" style="background:none;border:none;color:var(--muted);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;opacity:.45;transition:opacity .2s;font-family:'Nunito',sans-serif;padding:6px 8px;" onmouseenter="this.style.opacity='.85'" onmouseleave="this.style.opacity=document.body.dataset.loginMode==='admin'?'.85':'.45'">Admin</button>
+  <div id="admin-toggle-corner" style="position:fixed;bottom:20px;left:20px;z-index:9999;">
+    <button id="admin-toggle-btn" onclick="toggleAdminLogin()" style="background:var(--cream);border:1px solid var(--tan);color:var(--brown-dk);font-size:.8rem;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;opacity:.85;transition:all .2s;font-family:'Nunito',sans-serif;font-weight:700;padding:10px 18px;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,.08);min-height:40px;" onmouseenter="this.style.opacity='1';this.style.background='var(--white)'" onmouseleave="this.style.opacity='.85';this.style.background='var(--cream)'">Admin</button>
   </div>
 </div>
 
@@ -2872,11 +2872,7 @@ async function renderAdminPayments() {
 
 async function renderPaymentHistoryAll() {
   const { data, error } = await sb.from('c_payments')
-<<<<<<< Updated upstream
-    .select('*, contractor:c_contractors(id, first_name, last_name)')
-=======
     .select('*, contractor:c_contractors!contractor_id(id, first_name, last_name)')
->>>>>>> Stashed changes
     .order('paid_on', { ascending: false })
     .order('created_at', { ascending: false });
   if (error) return `<p style="color:var(--muted);">${esc(error.message)}</p>`;
