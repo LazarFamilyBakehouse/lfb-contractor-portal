@@ -1280,7 +1280,7 @@ async function loadYTDSummary(year) {
 
 async function loadPendingApprovals() {
   const { data, error } = await sb.from('c_hour_submissions')
-    .select('*, shift:c_shifts(*), contractor:c_contractors(first_name, last_name, email)')
+    .select('*, shift:c_shifts(*), contractor:c_contractors!contractor_id(first_name, last_name, email)')
     .eq('status', 'pending')
     .order('submitted_at', { ascending: true });
   if (error) { toast(error.message,{error:true}); return []; }
@@ -1436,7 +1436,7 @@ async function adminCancelShift(id, reason) {
   // Look up signups so we can notify
   const { data: shift } = await sb.from('c_shifts').select('*').eq('id', id).single();
   const { data: signups } = await sb.from('c_shift_signups')
-    .select('contractor:c_contractors(email, first_name)')
+    .select('contractor:c_contractors!contractor_id(email, first_name)')
     .eq('shift_id', id).eq('status', 'signed_up');
   const { error } = await sb.from('c_shifts').update({
     status: 'cancelled',
@@ -1525,7 +1525,7 @@ async function adminApproveHours(submissionId, approvedHours, adminNotes) {
   if (error) throw error;
   // load the submission + contractor to send the email
   const { data: sub } = await sb.from('c_hour_submissions')
-    .select('*, shift:c_shifts(*), contractor:c_contractors(*)')
+    .select('*, shift:c_shifts(*), contractor:c_contractors!contractor_id(*)')
     .eq('id', submissionId).single();
   if (sub) {
     // compute YTD line for the email
@@ -2610,7 +2610,7 @@ window.openCreateShiftModal = async function(preDate) {
 window.adminOpenShiftDetail = async function(shiftId) {
   const { data: shift } = await sb.from('c_shifts').select('*').eq('id', shiftId).single();
   const { data: signups } = await sb.from('c_shift_signups')
-    .select('*, contractor:c_contractors(first_name, last_name, email, phone)')
+    .select('*, contractor:c_contractors!contractor_id(first_name, last_name, email, phone)')
     .eq('shift_id', shiftId).order('signed_up_at');
   const active   = (signups||[]).filter(s => s.status === 'signed_up');
   const released = (signups||[]).filter(s => s.status === 'released');
@@ -2872,7 +2872,11 @@ async function renderAdminPayments() {
 
 async function renderPaymentHistoryAll() {
   const { data, error } = await sb.from('c_payments')
+<<<<<<< Updated upstream
     .select('*, contractor:c_contractors(id, first_name, last_name)')
+=======
+    .select('*, contractor:c_contractors!contractor_id(id, first_name, last_name)')
+>>>>>>> Stashed changes
     .order('paid_on', { ascending: false })
     .order('created_at', { ascending: false });
   if (error) return `<p style="color:var(--muted);">${esc(error.message)}</p>`;
@@ -3394,7 +3398,7 @@ async function renderAdminReferrals() {
   const el = $('sec-a-referrals');
   el.innerHTML = '<div class="page-h">Referrals</div><div class="page-sub">Loading…</div>';
   const { data, error } = await sb.from('c_referrals')
-    .select('*, contractor:c_contractors(first_name, last_name, email)')
+    .select('*, contractor:c_contractors!contractor_id(first_name, last_name, email)')
     .order('created_at', { ascending: false });
   if (error) { toast(error.message,{error:true}); return; }
   const open = data.filter(r => r.status === 'new');
