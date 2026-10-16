@@ -2788,12 +2788,7 @@ function docItemHtml(d, ownerCanDelete) {
   `;
 }
 
-window.viewDoc = async function(filePath) {
-  try {
-    const url = await downloadDocumentURL(filePath);
-    window.open(url, '_blank');
-  } catch (e) { toast(e.message || 'Download failed', {error:true}); }
-};
+window.viewDoc = function(filePath) { return openStoredFile(filePath, 'Could not open document'); };
 
 window.confirmDeleteDoc = function(id, filePath) {
   openModal('Delete document?', '<p style="font-size:.92rem;">This deletes the file permanently. Continue?</p>', [
@@ -4110,10 +4105,21 @@ async function generateAndStoreContractPdf(contractId) {
   return path;
 }
 
-window.openContractPdf = async function(path) {
-  try { const url = await downloadDocumentURL(path); window.open(url, '_blank'); }
-  catch (e) { toast(e.message || 'Could not open PDF', {error:true}); }
-};
+// Mobile browsers block window.open once an await has happened, so open the
+// tab synchronously on the tap, then point it at the signed URL.
+async function openStoredFile(path, errMsg) {
+  let w = null;
+  try { w = window.open('', '_blank'); } catch (e) { w = null; }
+  try {
+    const url = await downloadDocumentURL(path);
+    if (w && !w.closed) { w.location.href = url; }
+    else { window.location.href = url; }
+  } catch (e) {
+    if (w && !w.closed) w.close();
+    toast(e.message || errMsg || 'Could not open file', {error:true});
+  }
+}
+window.openContractPdf = function(path) { return openStoredFile(path, 'Could not open PDF'); };
 
 // ---------- CONTRACTOR SIDE ----------
 async function renderContractorContracts() {
