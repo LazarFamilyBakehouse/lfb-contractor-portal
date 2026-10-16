@@ -1027,6 +1027,7 @@ const ADMIN_SECTIONS = [
   { id:'a-availability', label:'Availability', icon:'📅' },
   { id:'a-approvals',    label:'Approvals',    icon:'✅' },
   { id:'a-payments',     label:'Payments',     icon:'💵' },
+  { id:'a-kitchenrent',  label:'Kitchen Rent', icon:'🏠' },
   { id:'a-contractors',  label:'Contractors',  icon:'👥' },
   { id:'a-referrals',    label:'Referrals',    icon:'🤝' },
   { id:'a-settings',     label:'Settings',     icon:'⚙️' }
@@ -1160,6 +1161,7 @@ SECTION_RENDERERS['a-shifts']       = renderAdminShifts;
 SECTION_RENDERERS['a-availability'] = renderAdminAvailability;
 SECTION_RENDERERS['a-approvals']    = renderAdminApprovals;
 SECTION_RENDERERS['a-payments']     = renderAdminPayments;
+SECTION_RENDERERS['a-kitchenrent']  = renderAdminKitchenRent;
 SECTION_RENDERERS['a-contractors']  = renderAdminContractors;
 SECTION_RENDERERS['a-audit']        = renderAdminAudit;
 SECTION_RENDERERS['a-settings']     = renderAdminSettings;
@@ -3189,6 +3191,236 @@ function diffJson(before, after) {
 }
 
 // ============================================================
+// ADMIN — KITCHEN RENT
+// Tracks rent income from outside kitchen users (manual entry).
+// ============================================================
+async function renderAdminKitchenRent() {
+  const el = $('sec-a-kitchenrent');
+  el.innerHTML = '<div class="page-h">Kitchen Rent</div><div class="page-sub">Loading…</div>';
+
+  const { data: rows, error } = await sb.from('c_kitchen_rent')
+    .select('*')
+    .order('period_start', { ascending: false })
+    .order('created_at',   { ascending: false });
+
+  if (error) {
+    el.innerHTML = `<div class="page-h">Kitchen Rent</div>
+      <p style="color:var(--warn);">${esc(error.message)}</p>
+      <p style="font-size:.82rem;color:var(--muted);">
+        If you just deployed, run <code>supabase/migrations/005_kitchen_rent_schema.sql</code> in the Supabase SQL Editor.</p>`;
+    return;
+  }
+
+  const today = todayISO();
+  const all = rows || [];
+  let outstanding = 0, collectedYTD = 0, dueThisMonth = 0;
+  const yearStart = today.slice(0,4) + '-01-01';
+  const monthStart = today.slice(0,7) + '-01';
+  for (const r of all) {
+    const due  = Number(r.amount_due  || 0);
+    const paid = Number(r.amount_paid || 0);
+    const remaining = Math.max(0, due - paid);
+    if (r.status !== 'cancelled') outstanding += remaining;
+    if (r.paid_on && r.paid_on >= yearStart) collectedYTD += paid;
+    if (r.period_start >= monthStart && r.period_start < addMonthsISO(monthStart, 1)) dueThisMonth += due;
+  }
+
+  el.innerHTML = `
+    <div class="page-h">Kitchen Rent</div>
+    <div class="page-sub">Manual log of rent from outside kitchen users</div>
+
+    ${outstanding > 0 ? `
+      <div class="panel" style="border-left:4px solid var(--warn);background:var(--warn-bg);">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:.74rem;text-transform:uppercase;letter-spacing:.1em;color:#7d6608;font-weight:700;">Outstanding rent</div>
+            <div style="font-family:'Playfair Display',serif;font-size:2.4rem;font-weight:700;color:var(--brown-dk);line-height:1.1;margin-top:4px;">${fmtCur(outstanding)}</div>
+          </div>
+        </div>
+      </div>
+    ` : ''}
+
+    <div class="stats-grid">
+      <div class="stat-card"><div class="sl">Collected YTD</div><div class="sv">${fmtCur(collectedYTD)}</div></div>
+      <div class="stat-card"><div class="sl">Due this month</div><div class="sv">${fmtCur(dueThisMonth)}</div></div>
+      <div class="stat-card"><div class="sl">Entries</div><div class="sv">${all.length}</div></div>
+    </div>
+
+    <div class="panel-actions" style="margin:14px 0;">
+      <button class="btn btn-primary" onclick="openKitchenRentModal()">+ Add rent entry</button>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">All entries</div>
+      ${all.length === 0 ? '<p style="color:var(--muted);font-size:.9rem;">No rent entries yet. Add one to get started.</p>' : `
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Period</th><th>Payer</th><th>Due</th><th>Paid</th><th>Balance</th><th>Status</th><th>Paid on</th><th></th></tr></thead>
+          <tbody>
+            ${all.map(r => {
+              const balance = Math.max(0, Number(r.amount_due||0) - Number(r.amount_paid||0));
+              const badgeCls = r.status === 'paid' ? 'b-paid'
+                            : r.status === 'overdue' ? 'b-warn'
+                            : r.status === 'partial' ? 'b-active'
+                            : r.status === 'cancelled' ? 'b-inactive'
+                            : 'b-pending';
+              return `
+                <tr>
+                  <td style="white-space:nowrap;">${esc(fmtDateShort(r.period_start))}${r.period_end ? ' → '+esc(fmtDateShort(r.period_end)) : ''}</td>
+                  <td><strong>${esc(r.payer_name||'')}</strong>${r.contact ? `<div style="font-size:.74rem;color:var(--muted);">${esc(r.contact)}</div>` : ''}</td>
+                  <td>${fmtCur(r.amount_due||0)}</td>
+                  <td>${fmtCur(r.amount_paid||0)}</td>
+                  <td><strong>${fmtCur(balance)}</strong></td>
+                  <td><span class="badge ${badgeCls}">${esc(r.status)}</span></td>
+                  <td>${r.paid_on ? esc(fmtDateShort(r.paid_on)) : '—'}</td>
+                  <td>
+                    ${r.status !== 'paid' && r.status !== 'cancelled'
+                      ? `<button class="btn btn-primary btn-sm" onclick="openKitchenRentPay('${r.id}')">Mark paid</button>` : ''}
+                    <button class="btn btn-outline btn-sm" onclick="openKitchenRentModal('${r.id}')">Edit</button>
+                    <button class="btn btn-outline btn-sm" onclick="deleteKitchenRent('${r.id}')">Delete</button>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table></div>
+      `}
+    </div>
+  `;
+}
+
+function addMonthsISO(iso, n) {
+  const [y,m,d] = iso.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, (m-1)+n, d||1));
+  return dt.toISOString().slice(0,10);
+}
+
+window.openKitchenRentModal = async function(id) {
+  let row = null;
+  if (id) {
+    const { data, error } = await sb.from('c_kitchen_rent').select('*').eq('id', id).single();
+    if (error) { toast(error.message, {error:true}); return; }
+    row = data;
+  }
+  const today = todayISO();
+  const monthStart = today.slice(0,7) + '-01';
+  openModal(id ? 'Edit rent entry' : 'Add rent entry', `
+    <div class="form-row">
+      <div class="fg"><label>Payer name</label><input id="kr-payer" value="${esc(row?.payer_name||'')}" placeholder="e.g. Joe's Empanadas" /></div>
+      <div class="fg"><label>Contact</label><input id="kr-contact" value="${esc(row?.contact||'')}" placeholder="email / phone (optional)" /></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Period start</label><input id="kr-pstart" type="date" value="${esc(row?.period_start || monthStart)}" /></div>
+      <div class="fg"><label>Period end (optional)</label><input id="kr-pend" type="date" value="${esc(row?.period_end || '')}" /></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Amount due</label><input id="kr-due" type="number" step="0.01" min="0" value="${esc(row?.amount_due || '')}" inputmode="decimal" /></div>
+      <div class="fg"><label>Amount paid so far</label><input id="kr-paid" type="number" step="0.01" min="0" value="${esc(row?.amount_paid || '0')}" inputmode="decimal" /></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Status</label><select id="kr-status">
+        ${['pending','partial','paid','overdue','cancelled']
+          .map(s => `<option value="${s}" ${row?.status===s?'selected':''}>${s}</option>`).join('')}
+      </select></div>
+      <div class="fg"><label>Paid on (if applicable)</label><input id="kr-paidon" type="date" value="${esc(row?.paid_on || '')}" /></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Method</label><select id="kr-method">
+        ${['','check','venmo','zelle','cash','wire','other']
+          .map(m => `<option value="${m}" ${row?.method===m?'selected':''}>${m||'—'}</option>`).join('')}
+      </select></div>
+      <div class="fg"><label>Reference (check #, txn id)</label><input id="kr-ref" value="${esc(row?.reference||'')}" /></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Notes</label><textarea id="kr-notes" rows="2">${esc(row?.notes||'')}</textarea></div>
+    </div>
+  `, [
+    { label:'Cancel', cls:'btn-outline', onClick: closeModal },
+    { label: id ? 'Save changes' : 'Add entry', cls:'btn-primary', onClick: async () => {
+      const payload = {
+        payer_name:   v('kr-payer'),
+        contact:      v('kr-contact'),
+        period_start: v('kr-pstart'),
+        period_end:   v('kr-pend')   || null,
+        amount_due:   Number(v('kr-due')  || 0),
+        amount_paid:  Number(v('kr-paid') || 0),
+        status:       $('kr-status').value,
+        paid_on:      v('kr-paidon') || null,
+        method:       $('kr-method').value,
+        reference:    v('kr-ref'),
+        notes:        v('kr-notes')
+      };
+      if (!payload.payer_name) { toast('Payer name required', {error:true}); return; }
+      if (!payload.period_start) { toast('Period start required', {error:true}); return; }
+      try {
+        const q = id
+          ? sb.from('c_kitchen_rent').update(payload).eq('id', id)
+          : sb.from('c_kitchen_rent').insert(payload);
+        const { error } = await q;
+        if (error) throw error;
+        closeModal();
+        toast(id ? 'Saved' : 'Added');
+        refreshActiveSection();
+      } catch (e) { toast(e.message || 'Save failed', {error:true}); }
+    }}
+  ]);
+};
+
+window.openKitchenRentPay = async function(id) {
+  const { data: row, error } = await sb.from('c_kitchen_rent').select('*').eq('id', id).single();
+  if (error) { toast(error.message, {error:true}); return; }
+  const balance = Math.max(0, Number(row.amount_due||0) - Number(row.amount_paid||0));
+  openModal(`Mark paid — ${row.payer_name}`, `
+    <p style="font-size:.86rem;color:var(--muted);margin-bottom:10px;">Outstanding: <strong>${fmtCur(balance)}</strong></p>
+    <div class="form-row">
+      <div class="fg"><label>Amount received</label><input id="krp-amt" type="number" step="0.01" min="0" value="${balance.toFixed(2)}" inputmode="decimal" /></div>
+      <div class="fg"><label>Method</label><select id="krp-method">
+        ${['check','venmo','zelle','cash','wire','other']
+          .map(m => `<option value="${m}" ${row.method===m?'selected':''}>${m}</option>`).join('')}
+      </select></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Paid on</label><input id="krp-date" type="date" value="${todayISO()}" /></div>
+      <div class="fg"><label>Reference</label><input id="krp-ref" value="${esc(row.reference||'')}" /></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Notes</label><textarea id="krp-notes" rows="2">${esc(row.notes||'')}</textarea></div>
+    </div>
+  `, [
+    { label:'Cancel', cls:'btn-outline', onClick: closeModal },
+    { label:'Record', cls:'btn-primary', onClick: async () => {
+      const addAmt = Number(v('krp-amt') || 0);
+      const newPaid = Number(row.amount_paid||0) + addAmt;
+      const due = Number(row.amount_due||0);
+      const newStatus = newPaid >= due ? 'paid' : (newPaid > 0 ? 'partial' : row.status);
+      try {
+        const { error } = await sb.from('c_kitchen_rent').update({
+          amount_paid: newPaid,
+          status:      newStatus,
+          paid_on:     v('krp-date'),
+          method:      $('krp-method').value,
+          reference:   v('krp-ref'),
+          notes:       v('krp-notes')
+        }).eq('id', id);
+        if (error) throw error;
+        closeModal();
+        toast('Payment recorded');
+        refreshActiveSection();
+      } catch (e) { toast(e.message || 'Update failed', {error:true}); }
+    }}
+  ]);
+};
+
+window.deleteKitchenRent = async function(id) {
+  if (!confirm('Delete this rent entry? This cannot be undone.')) return;
+  try {
+    const { error } = await sb.from('c_kitchen_rent').delete().eq('id', id);
+    if (error) throw error;
+    toast('Deleted');
+    refreshActiveSection();
+  } catch (e) { toast(e.message || 'Delete failed', {error:true}); }
+};
+
+// ============================================================
 // ADMIN — SETTINGS
 // ============================================================
 async function renderAdminSettings() {
@@ -3682,6 +3914,7 @@ async function renderAdminGuide() {
         <li><strong>📅 Availability</strong> &mdash; calendar heatmap. Tap any day to see which contractors are free / busy / tentative, and post a shift directly from that date.</li>
         <li><strong>✅ Approvals</strong> &mdash; contractors submit hours after each shift; approve (and edit) here. Approved hours snapshot the pay rate at that moment, so future rate changes don't rewrite history.</li>
         <li><strong>💵 Payments</strong> &mdash; per contractor, see what they're owed and record payment (check / Venmo / Zelle / cash). Click "Pay" &rarr; check the hour records this payment covers &rarr; enter amount and method.</li>
+        <li><strong>🏠 Kitchen Rent</strong> &mdash; manual log of rent collected from outside kitchen users (sub-tenants, side bakers, food trucks). Track due, paid, outstanding per period. Use "Mark paid" to record a payment against an open entry.</li>
         <li><strong>👥 Contractors</strong> &mdash; add / edit / deactivate. Each row has a "History" button (full hours + payments timeline) and "Edit" (profile + PIN management). Use "Generate new PIN" to rotate; share PIN with contractor out of band.</li>
         <li><strong>🤝 Referrals</strong> &mdash; contractors can refer friends. They show up here as "new" &mdash; update status as you process each one.</li>
         <li><strong>⚙️ Settings</strong> &mdash; defaults for new shifts (location, start/end times), EmailJS configuration status, maintenance tools.</li>
