@@ -1460,6 +1460,25 @@ async function loadPaymentsForContractor(contractorId) {
   return data || [];
 }
 
+// { contractor_id: { hours, n } } for approved hour rows with no payment item yet
+async function loadUnpaidHoursByContractor() {
+  const { data: subs, error } = await sb.from('c_hour_submissions')
+    .select('id, contractor_id, approved_hours')
+    .eq('status', 'approved');
+  if (error || !subs?.length) return {};
+  const paid = new Set();
+  for (let i = 0; i < subs.length; i += 500) {
+    const { data } = await sb.from('c_payment_items').select('hour_submission_id').in('hour_submission_id', subs.slice(i, i+500).map(x => x.id));
+    (data||[]).forEach(x => paid.add(x.hour_submission_id));
+  }
+  const out = {};
+  subs.filter(x => !paid.has(x.id)).forEach(x => {
+    out[x.contractor_id] = out[x.contractor_id] || { hours: 0, n: 0 };
+    out[x.contractor_id].hours += Number(x.approved_hours||0); out[x.contractor_id].n++;
+  });
+  return out;
+}
+
 async function loadUnpaidApprovedHours(contractorId) {
   // Approved hour rows for this contractor that don't yet have a payment_item
   const { data: subs, error } = await sb.from('c_hour_submissions')
@@ -3335,7 +3354,7 @@ window.approveSubmission = async function(id) {
 async function renderAdminPayments() {
   const el = $('sec-a-payments');
   el.innerHTML = '<div class="page-h">Payments</div><div class="page-sub">Loading…</div>';
-  const ytd = await loadYTDSummary();
+  const [ytd, unpaidHrs] = await Promise.all([loadYTDSummary(), loadUnpaidHoursByContractor()]);
   const rows = (ytd||[]).filter(r => r.status === 'active' && Number(r.unpaid_amount||0) > 0);
 
   el.innerHTML = `
@@ -3351,7 +3370,7 @@ async function renderAdminPayments() {
             ${rows.map(r => `
               <tr>
                 <td><strong>${esc(r.first_name||'')} ${esc(r.last_name||'')}</strong></td>
-                <td>${Number(r.approved_hours||0).toFixed(1)} approved</td>
+                <td>${(unpaidHrs[r.contractor_id] ? unpaidHrs[r.contractor_id].hours : 0).toFixed(2)}${unpaidHrs[r.contractor_id] ? ` <span style="color:var(--muted);font-size:.8rem;">(${unpaidHrs[r.contractor_id].n} shift${unpaidHrs[r.contractor_id].n===1?'':'s'})</span>` : ''}</td>
                 <td><strong>${fmtCur(r.unpaid_amount||0)}</strong></td>
                 <td>
                   <button class="btn btn-outline btn-sm" onclick="openContractorHistory('${r.contractor_id}')">History</button>
