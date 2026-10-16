@@ -21,6 +21,7 @@
   notify() function below is a console-log no-op. Nothing is sent.
 -->
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 /* ============================================================
    TOKENS
@@ -464,6 +465,25 @@ tbody td { padding:10px 12px; color:var(--brown-dk); vertical-align:top; }
 .modal-actions .btn { width:100%; }
 
 /* ============================================================
+   CONTRACTS / E-SIGNATURE
+   ============================================================ */
+.modal.modal-wide { max-width:900px; }
+.ct-wrap { font-size:.9rem; line-height:1.55; color:var(--brown-dk); }
+.ct-doc { background:var(--white); border:1px solid var(--tan); border-radius:6px; padding:22px 24px; }
+.ct-h1 { font-family:'Playfair Display',serif; font-size:1.05rem; text-align:center; margin:4px 0; letter-spacing:.04em; }
+.ct-h2 { font-size:.9rem; font-weight:700; margin:18px 0 4px; text-transform:uppercase; letter-spacing:.03em; }
+.ct-p { margin:0 0 10px; text-align:justify; }
+.ct-sig { margin:16px 0 4px; padding:10px 0 0; border-top:1px solid var(--tan-dk); max-width:380px; }
+.ct-sig-name { font-family:'Playfair Display',serif; font-style:italic; font-size:1.3rem; color:var(--brown-dk); }
+.ct-sig-meta { font-size:.72rem; color:var(--muted); margin-top:2px; }
+.ct-sig-pending { border-top:1px dashed var(--tan-dk); }
+.ct-signbox { margin-top:16px; padding:16px; border:2px solid var(--accent); border-radius:8px; background:var(--success-bg); transition:opacity .2s; }
+.ct-signbox.locked { opacity:.45; pointer-events:none; }
+.ct-signbox.locked::before { content:'Scroll to the end of the agreement to unlock signing'; display:block; font-size:.8rem; font-weight:700; color:var(--brown); margin-bottom:8px; }
+.ct-consent { display:flex; gap:10px; align-items:flex-start; font-size:.82rem; line-height:1.45; cursor:pointer; }
+.ct-consent input { margin-top:3px; flex-shrink:0; width:18px; height:18px; }
+
+/* ============================================================
    TOAST
    ============================================================ */
 #toast {
@@ -758,7 +778,10 @@ const EMAILJS_TEMPLATES = {
   hours_approved:    'PLACEHOLDER_TEMPLATE_hours_approved',
   shift_reminder:    'PLACEHOLDER_TEMPLATE_shift_reminder',
   shift_cancelled:   'PLACEHOLDER_TEMPLATE_shift_cancelled',
-  availability_nudge:'PLACEHOLDER_TEMPLATE_availability_nudge'
+  availability_nudge:'PLACEHOLDER_TEMPLATE_availability_nudge',
+  contract_sent:     'PLACEHOLDER_TEMPLATE_contract_sent',
+  contract_signed:   'PLACEHOLDER_TEMPLATE_contract_signed',
+  contract_declined: 'PLACEHOLDER_TEMPLATE_contract_declined'
 };
 const ADMIN_EMAIL = 'info@lazarfamilybakehouse.com'; // recipient for admin-facing emails
 const PORTAL_URL  = (typeof window !== 'undefined' && window.location.origin.startsWith('http'))
@@ -874,7 +897,7 @@ function openModal(title, bodyHtml, actions){
   });
   $('generic-modal').classList.add('open');
 }
-function closeModal(){ $('generic-modal').classList.remove('open'); }
+function closeModal(){ $('generic-modal').classList.remove('open'); $('generic-modal').querySelector('.modal').classList.remove('modal-wide'); }
 
 function resetInactivityTimer(){
   clearTimeout(_inactivityTimer);
@@ -1029,6 +1052,7 @@ const ADMIN_SECTIONS = [
   { id:'a-payments',     label:'Payments',     icon:'💵' },
   { id:'a-kitchenrent',  label:'Kitchen Rent', icon:'🏠' },
   { id:'a-contractors',  label:'Contractors',  icon:'👥' },
+  { id:'a-contracts',    label:'Contracts',    icon:'✍️' },
   { id:'a-referrals',    label:'Referrals',    icon:'🤝' },
   { id:'a-settings',     label:'Settings',     icon:'⚙️' }
   // Audit log hidden from nav (triggers still capture data; restore by adding {id:'a-audit', label:'Audit', icon:'📜'} back to this array)
@@ -1040,6 +1064,7 @@ const CONTRACTOR_SECTIONS = [
   { id:'c-myshifts',     label:'My Shifts',    icon:'📋' },
   { id:'c-availability', label:'Availability', icon:'🗓️' },
   { id:'c-payments',     label:'Payments',     icon:'💵' },
+  { id:'c-contracts',    label:'Agreements',   icon:'✍️' },
   { id:'c-referrals',    label:'Referrals',    icon:'🤝' },
   { id:'c-profile',      label:'Profile',      icon:'👤' }
 ];
@@ -1130,6 +1155,15 @@ async function renderNotifBanner() {
     else if (days <= 30) items.push({ key:'food-exp', type:'warning', text:`Your food handler card expires in ${days} day${days===1?'':'s'}.` });
   }
 
+  // Unsigned agreement waiting (contractor) — not dismissable
+  if (session.role === 'contractor') {
+    try {
+      const { data: open } = await sb.from('c_contracts').select('id,title').in('status',['sent','viewed']).eq('contractor_id', c.id);
+      (open||[]).forEach(k => items.push({ key:'contract-'+k.id, type:'urgent', sticky:true,
+        text:`Action needed: please review and sign your ${k.title}.`, action:{ label:'Open', section:'c-contracts' } }));
+    } catch (e) { /* table not migrated yet */ }
+  }
+
   // Stale availability (contractor)
   if (session.role === 'contractor') {
     const last = c.availability_last_updated_at;
@@ -1138,11 +1172,12 @@ async function renderNotifBanner() {
   }
 
   const html = items
-    .filter(i => !dismissed.includes(i.key))
+    .filter(i => i.sticky || !dismissed.includes(i.key))
     .map(i => `
       <div class="notif-item notif-${i.type}">
         <span class="notif-text">${esc(i.text)}</span>
-        <button class="notif-dismiss" onclick="dismissNotif('${i.key}')">×</button>
+        ${i.action ? `<button class="btn btn-primary btn-sm" style="margin-left:8px;" onclick="showSection('${i.action.section}')">${esc(i.action.label)}</button>` : ''}
+        ${i.sticky ? '' : `<button class="notif-dismiss" onclick="dismissNotif('${i.key}')">×</button>`}
       </div>
     `).join('');
   $('notif-banner').innerHTML = html;
@@ -1177,6 +1212,8 @@ SECTION_RENDERERS['c-profile']      = renderContractorProfile;
 SECTION_RENDERERS['c-referrals']    = renderContractorReferrals;
 SECTION_RENDERERS['a-referrals']    = renderAdminReferrals;
 SECTION_RENDERERS['a-guide']        = renderAdminGuide;
+SECTION_RENDERERS['a-contracts']    = renderAdminContracts;
+SECTION_RENDERERS['c-contracts']    = renderContractorContracts;
 
 /* ============================================================
    PLACEHOLDER RENDERERS
@@ -2998,6 +3035,7 @@ async function renderAdminContractors() {
               <td>
                 <button class="btn btn-outline btn-sm" onclick="openContractorHistory('${c.id}')">History</button>
                 <button class="btn btn-outline btn-sm" onclick="openEditContractorModal('${c.id}')">Edit</button>
+                ${c.role==='contractor' ? `<button class="btn btn-outline btn-sm" onclick="openSendContractModal('${c.id}')">✍️ Contract</button>` : ''}
               </td>
             </tr>
           `).join('') || '<tr><td class="empty-row" colspan="7">No contractors yet</td></tr>'}
@@ -3189,6 +3227,503 @@ function diffJson(before, after) {
   }
   return Object.keys(out).length ? out : '(no field changes)';
 }
+
+// ============================================================
+// CONTRACTS + E-SIGNATURE
+// Templates (markdown-lite with {{merge_fields}}) → per-contractor
+// contract (frozen text + SHA-256) → contractor reviews, consents,
+// types name, signs via RPC (server records IP/UA/time) → signed
+// PDF with signature page + audit certificate stored in the
+// private contractor-documents bucket.
+// ============================================================
+const CONTRACT_CONSENT_TEXT =
+  'I agree to use electronic records and signatures. I understand that typing my name below and clicking ' +
+  '"Sign agreement" constitutes my legally binding electronic signature on this Agreement, with the same ' +
+  'effect as a handwritten signature, under the U.S. ESIGN Act and the Colorado Uniform Electronic ' +
+  'Transactions Act. I have read the entire Agreement, including Exhibit A, and I can download a copy at any time.';
+
+const CONTRACT_MERGE_FIELDS = [
+  { key:'contractor_name',    label:'Contractor legal name' },
+  { key:'contractor_address', label:'Contractor address' },
+  { key:'effective_date',     label:'Effective date (as written)' },
+  { key:'pay_rate',           label:'Pay rate (as written, e.g. $19.00 (nineteen dollars))' },
+  { key:'company_signer',     label:'Company signer' },
+  { key:'company_title',      label:'Company signer title' }
+];
+
+function contractMerge(body, vals) {
+  return String(body||'').replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (m, k) => (vals && vals[k] != null && vals[k] !== '') ? String(vals[k]) : m);
+}
+function contractUnfilled(body) {
+  const m = String(body||'').match(/\{\{\s*[a-z_]+\s*\}\}/gi) || [];
+  return [...new Set(m)];
+}
+function fmtLongDate(iso) {
+  const d = iso ? new Date(iso + (iso.length === 10 ? 'T12:00:00' : '')) : new Date();
+  return d.toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+}
+function fmtStamp(ts) {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleString('en-US', { timeZone:'America/Denver', year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', timeZoneName:'short' });
+}
+async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+// markdown-lite → HTML (# H1, ## H2, blank-line paragraphs)
+function contractToHtml(body) {
+  return String(body||'').split(/\n{2,}/).map(block => {
+    const t = block.trim();
+    if (!t) return '';
+    if (t.startsWith('## ')) {
+      const [h, ...rest] = t.split('\n');
+      return `<h3 class="ct-h2">${esc(h.slice(3))}</h3>` + (rest.length ? `<p class="ct-p">${esc(rest.join('\n').trim()).replace(/\n/g,'<br>')}</p>` : '');
+    }
+    if (t.startsWith('# '))  return t.split('\n').map(l => `<h2 class="ct-h1">${esc(l.replace(/^#\s*/,''))}</h2>`).join('');
+    return `<p class="ct-p">${esc(t).replace(/\n/g,'<br>')}</p>`;
+  }).join('');
+}
+
+const CONTRACT_STATUS_BADGE = { sent:'b-pending', viewed:'b-warn', signed:'b-approved', declined:'b-danger', voided:'b-inactive' };
+const CONTRACT_STATUS_LABEL = { sent:'Awaiting signature', viewed:'Viewed, unsigned', signed:'Signed', declined:'Declined', voided:'Voided' };
+
+// ---------- PDF ----------
+// Text-based (searchable, small). Body + signature page + audit certificate.
+async function buildContractPdf(contract, events) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'pt', format:'letter' });
+  const W = 612, H = 792, M = 60, maxW = W - 2*M;
+  let y = M;
+  const footer = () => {
+    const n = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= n; i++) {
+      doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(120);
+      doc.text(`LAZAR FAMILY BAKEHOUSE LLC • ${contract.title} • Confidential`, M, H - 30);
+      doc.text(`Page ${i} of ${n}`, W - M, H - 30, { align:'right' });
+      doc.text(`Document ID ${contract.id}`, M, H - 18);
+    }
+    doc.setTextColor(0);
+  };
+  const need = (h) => { if (y + h > H - 50) { doc.addPage(); y = M; } };
+  const para = (text, { size=10, style='normal', gap=8, align='left' } = {}) => {
+    doc.setFont('helvetica', style); doc.setFontSize(size);
+    const lines = doc.splitTextToSize(text, maxW);
+    const lh = size * 1.35;
+    for (const ln of lines) { need(lh); doc.text(ln, align==='center' ? W/2 : M, y, { align }); y += lh; }
+    y += gap;
+  };
+
+  // Body
+  for (const block of String(contract.body_rendered).split(/\n{2,}/)) {
+    const t = block.trim(); if (!t) continue;
+    if (t.startsWith('## '))     { const [h, ...rest] = t.split('\n'); para(h.slice(3), { size:11, style:'bold', gap:4 }); if (rest.length) para(rest.join(' ').trim(), { size:10 }); }
+    else if (t.startsWith('# ')) { y += 6; t.split('\n').forEach(l => para(l.replace(/^#\s*/,''), { size:14, style:'bold', gap:2, align:'center' })); y += 6; }
+    else                         para(t.replace(/\n/g,' '), { size:10 });
+  }
+
+  // Signature page
+  doc.addPage(); y = M;
+  para('LAZAR FAMILY BAKEHOUSE LLC', { size:14, style:'bold', gap:2, align:'center' });
+  para(contract.title.toUpperCase(), { size:12, style:'bold', gap:2, align:'center' });
+  para('*** SIGNATURE PAGE ***', { size:11, style:'bold', gap:18, align:'center' });
+  para('IN WITNESS WHEREOF, the parties hereto have executed this Agreement, including Exhibit A (Statement of Work #1), as of the dates written below. This Agreement was executed electronically; the signature details and audit trail on the following page form part of the executed record.', { size:10, gap:24 });
+
+  const sigBlock = (party, name, title, when, typed) => {
+    need(120);
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.text(party, M, y); y += 20;
+    doc.setFont('times','italic'); doc.setFontSize(18); doc.text(typed || name || '', M + 36, y); y += 6;
+    doc.setDrawColor(90); doc.line(M + 30, y, M + 330, y); y += 14;
+    doc.setFont('helvetica','normal'); doc.setFontSize(10);
+    doc.text(`By: ${name || ''}`, M, y); y += 14;
+    doc.text(`Title: ${title || ''}`, M, y); y += 14;
+    doc.text(`Date: ${when ? fmtStamp(when) : ''}`, M, y); y += 14;
+    doc.text(`Signed electronically`, M, y); y += 30;
+  };
+  sigBlock('LAZAR FAMILY BAKEHOUSE LLC', contract.company_signer_name, contract.company_signer_title, contract.company_signed_at, contract.company_signer_name);
+  sigBlock('INDEPENDENT CONTRACTOR', contract.signer_typed_name, 'Independent Contractor', contract.signed_at, contract.signer_typed_name);
+
+  // Audit certificate
+  doc.addPage(); y = M;
+  para('ELECTRONIC SIGNATURE CERTIFICATE', { size:13, style:'bold', gap:4, align:'center' });
+  para('Audit trail generated by the Lazar Family Bakehouse Contractor Portal (contractors.lazarfamilybakehouse.com)', { size:9, gap:16, align:'center' });
+  const kv = (k, v) => { need(16); doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.text(k, M, y); doc.setFont('helvetica','normal'); const lines = doc.splitTextToSize(String(v||'—'), maxW - 150); doc.text(lines, M + 150, y); y += 13 * lines.length; };
+  kv('Document ID', contract.id);
+  kv('Document title', contract.title);
+  kv('Template version', contract.template_version != null ? `v${contract.template_version}` : '—');
+  kv('Document SHA-256', contract.body_sha256);
+  kv('Sent to signer', `${contract.signer_email || ''} on ${fmtStamp(contract.sent_at)}`);
+  kv('First viewed', fmtStamp(contract.first_viewed_at));
+  kv('Signed', fmtStamp(contract.signed_at));
+  kv('Signer typed name', contract.signer_typed_name);
+  kv('Signer account', `${contract.signer_email || ''} (user ${contract.signer_user_id || ''})`);
+  kv('Signer IP address', contract.signer_ip);
+  kv('Signer device', contract.signer_user_agent);
+  kv('Company signer', `${contract.company_signer_name}, ${contract.company_signer_title} on ${fmtStamp(contract.company_signed_at)}`);
+  y += 8;
+  para('Consent statement accepted by signer:', { size:9, style:'bold', gap:2 });
+  para(contract.consent_text || CONTRACT_CONSENT_TEXT, { size:9, gap:12 });
+  para('Event log', { size:9, style:'bold', gap:2 });
+  for (const e of (events||[])) {
+    para(`${fmtStamp(e.at)}  ·  ${e.event.toUpperCase()}  ·  ${e.actor_email || ''}${e.ip ? '  ·  ' + e.ip : ''}`, { size:8.5, gap:1 });
+  }
+  footer();
+  return doc.output('blob');
+}
+
+async function generateAndStoreContractPdf(contractId) {
+  const { data: contract, error } = await sb.from('c_contracts').select('*').eq('id', contractId).single();
+  if (error) throw error;
+  const { data: events } = await sb.from('c_contract_events').select('*').eq('contract_id', contractId).order('at');
+  const blob = await buildContractPdf(contract, events || []);
+  const path = `${contract.contractor_id}/contracts/${contract.id}.pdf`;
+  if (contract.pdf_path) { try { await sb.storage.from('contractor-documents').remove([path]); } catch (e) { /* ignore */ } }
+  const { error: upErr } = await sb.storage.from('contractor-documents').upload(path, blob, { upsert:false, contentType:'application/pdf' });
+  if (upErr) throw upErr;
+  const { error: rpcErr } = await sb.rpc('c_contract_attach_pdf', { p_contract: contractId, p_path: path });
+  if (rpcErr) throw rpcErr;
+  if (!contract.pdf_path) {
+    await sb.from('c_documents').insert({
+      contractor_id: contract.contractor_id, document_type:'contract', file_path: path,
+      file_name: `${contract.title.replace(/[^\w]+/g,'_')}_signed.pdf`, file_size_bytes: blob.size,
+      mime_type:'application/pdf', uploaded_by: session.contractor.id
+    });
+  }
+  return path;
+}
+
+window.openContractPdf = async function(path) {
+  try { const url = await downloadDocumentURL(path); window.open(url, '_blank'); }
+  catch (e) { toast(e.message || 'Could not open PDF', {error:true}); }
+};
+
+// ---------- CONTRACTOR SIDE ----------
+async function renderContractorContracts() {
+  const el = $('sec-c-contracts');
+  el.innerHTML = '<div class="page-h">Agreements</div><div class="page-sub">Loading…</div>';
+  const { data: rows, error } = await sb.from('c_contracts').select('*').eq('contractor_id', session.contractor.id).order('sent_at', { ascending:false });
+  if (error) { el.innerHTML = `<div class="page-h">Agreements</div><p style="color:var(--warn);">${esc(error.message)}</p>`; return; }
+  const open = (rows||[]).filter(r => ['sent','viewed'].includes(r.status));
+  const done = (rows||[]).filter(r => !['sent','viewed'].includes(r.status));
+  const row = r => `
+    <tr>
+      <td><strong>${esc(r.title)}</strong><div style="font-size:.74rem;color:var(--muted);">Sent ${esc(fmtStamp(r.sent_at))}</div></td>
+      <td><span class="badge ${CONTRACT_STATUS_BADGE[r.status]||'b-inactive'}">${esc(CONTRACT_STATUS_LABEL[r.status]||r.status)}</span>
+          ${r.signed_at ? `<div style="font-size:.74rem;color:var(--muted);">${esc(fmtStamp(r.signed_at))}</div>` : ''}</td>
+      <td style="white-space:nowrap;">
+        ${['sent','viewed'].includes(r.status) ? `<button class="btn btn-primary btn-sm" onclick="openContractForSigning('${r.id}')">Review & sign</button>` : ''}
+        ${r.status==='signed' ? (r.pdf_path ? `<button class="btn btn-outline btn-sm" onclick="openContractPdf('${esc(r.pdf_path)}')">Download PDF</button>` : `<button class="btn btn-outline btn-sm" onclick="regenContractPdf('${r.id}')">Prepare PDF</button>`) : ''}
+        <button class="btn btn-outline btn-sm" onclick="openContractReadOnly('${r.id}')">View</button>
+      </td>
+    </tr>`;
+  el.innerHTML = `
+    <div class="page-h">Agreements</div>
+    <div class="page-sub">Your contracts with Lazar Family Bakehouse</div>
+    ${open.length ? `<div class="panel" style="border-left:4px solid var(--urgent);background:var(--urgent-bg);">
+      <div class="panel-title">Needs your signature</div>
+      <div class="tbl-wrap"><table><tbody>${open.map(row).join('')}</tbody></table></div></div>` : ''}
+    <div class="panel">
+      <div class="panel-title">${open.length ? 'Completed' : 'All agreements'}</div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Agreement</th><th>Status</th><th></th></tr></thead>
+        <tbody>${done.map(row).join('') || '<tr><td class="empty-row" colspan="3">Nothing here yet</td></tr>'}</tbody>
+      </table></div>
+    </div>`;
+}
+
+window.regenContractPdf = async function(id) {
+  try { toast('Preparing PDF…'); await generateAndStoreContractPdf(id); toast('PDF ready'); refreshActiveSection(); }
+  catch (e) { toast(e.message || 'PDF failed', {error:true}); }
+};
+
+function contractViewerHtml(c, { signing } = {}) {
+  const sigPreview = c.status === 'signed'
+    ? `<div class="ct-sig"><div class="ct-sig-name">${esc(c.signer_typed_name)}</div><div class="ct-sig-meta">Signed electronically by ${esc(c.signer_email||'')} · ${esc(fmtStamp(c.signed_at))}${c.signer_ip ? ' · IP ' + esc(c.signer_ip) : ''}</div></div>`
+    : '';
+  return `
+    <div class="ct-doc" id="ct-doc">
+      ${contractToHtml(c.body_rendered)}
+      <h3 class="ct-h2" style="margin-top:28px;">SIGNATURES</h3>
+      <div class="ct-sig"><div class="ct-sig-name">${esc(c.company_signer_name)}</div><div class="ct-sig-meta">${esc(c.company_signer_name)}, ${esc(c.company_signer_title)} · LAZAR FAMILY BAKEHOUSE LLC · ${esc(fmtStamp(c.company_signed_at))}</div></div>
+      ${sigPreview}
+      ${signing ? '<div class="ct-sig ct-sig-pending"><div class="ct-sig-name" style="color:var(--muted);">Your signature</div><div class="ct-sig-meta">Independent Contractor · pending below</div></div>' : ''}
+    </div>`;
+}
+
+window.openContractReadOnly = async function(id) {
+  const { data: c, error } = await sb.from('c_contracts').select('*').eq('id', id).single();
+  if (error) { toast(error.message, {error:true}); return; }
+  openModal(c.title, `<div class="ct-wrap">${contractViewerHtml(c)}</div>`, [
+    ...(c.pdf_path ? [{ label:'Download PDF', cls:'btn-outline', onClick: () => openContractPdf(c.pdf_path) }] : []),
+    { label:'Close', cls:'btn-primary', onClick: closeModal }
+  ]);
+  $('generic-modal').querySelector('.modal').classList.add('modal-wide');
+};
+
+window.openContractForSigning = async function(id) {
+  const { data: c, error } = await sb.from('c_contracts').select('*').eq('id', id).single();
+  if (error) { toast(error.message, {error:true}); return; }
+  if (!['sent','viewed'].includes(c.status)) { openContractReadOnly(id); return; }
+  sb.rpc('c_contract_mark_viewed', { p_contract: id }).then(()=>{});
+  const legalName = `${session.contractor.first_name||''} ${session.contractor.last_name||''}`.trim();
+  const clientSha = await sha256Hex(c.body_rendered);
+
+  openModal(c.title, `
+    <div class="ct-wrap">
+      <p style="font-size:.86rem;color:var(--muted);margin:0 0 10px;">Please read the whole agreement. The signature section unlocks when you reach the bottom.</p>
+      ${contractViewerHtml(c, { signing:true })}
+      <div class="ct-signbox" id="ct-signbox">
+        <label class="ct-consent"><input type="checkbox" id="ct-consent" /> <span>${esc(CONTRACT_CONSENT_TEXT)}</span></label>
+        <div class="fg" style="margin-top:12px;">
+          <label>Type your full legal name to sign</label>
+          <input id="ct-typed" placeholder="${esc(legalName)}" autocomplete="off" style="font-family:'Playfair Display',serif;font-size:1.25rem;" />
+          <div class="help">Must match your name on file: <strong>${esc(legalName)}</strong>. Contact us before signing if your legal name is different.</div>
+        </div>
+        <div style="font-size:.78rem;color:var(--muted);margin-top:10px;">When you sign, we record your name, email, the date and time, your IP address and device, and a fingerprint (SHA-256) of this exact document. You'll get a PDF copy immediately.</div>
+      </div>
+    </div>`, [
+    { label:'Decline', cls:'btn-outline', onClick: () => declineContractPrompt(id) },
+    { label:'Sign agreement', cls:'btn-primary', onClick: async () => {
+      const typed = v('ct-typed');
+      if (!$('ct-consent').checked) { toast('Please check the consent box first', {error:true}); return; }
+      if (!typed) { toast('Type your full legal name to sign', {error:true}); return; }
+      if (typed.toLowerCase().replace(/\s+/g,' ') !== legalName.toLowerCase().replace(/\s+/g,' ')) {
+        toast(`Name must match "${legalName}" exactly`, {error:true}); return;
+      }
+      const btns = $('generic-modal-actions').querySelectorAll('button'); btns.forEach(b => b.disabled = true);
+      try {
+        const { error: e1 } = await sb.rpc('c_contract_sign', { p_contract: id, p_typed_name: typed, p_consent_text: CONTRACT_CONSENT_TEXT, p_client_sha: clientSha });
+        if (e1) throw e1;
+        toast('Signed. Preparing your PDF…');
+        try { await generateAndStoreContractPdf(id); } catch (e) { console.warn('pdf', e); toast('Signed, but the PDF could not be saved yet. Use "Prepare PDF" to retry.', {error:true}); }
+        notify('contract_signed', { to_email: ADMIN_EMAIL, contractor_name: legalName, contract_title: c.title, portal_url: PORTAL_URL });
+        closeModal(); renderNotifBanner(); refreshActiveSection();
+      } catch (e) { toast(e.message || 'Signing failed', {error:true}); btns.forEach(b => b.disabled = false); }
+    }}
+  ]);
+  const modal = $('generic-modal').querySelector('.modal');
+  modal.classList.add('modal-wide');
+  // scroll gate: enable signing only after the bottom of the document has been on screen
+  const actions = $('generic-modal-actions'); const signBtn = actions.querySelectorAll('button')[1];
+  signBtn.disabled = true; $('ct-signbox').classList.add('locked');
+  const sentinel = document.createElement('div'); sentinel.style.height = '1px'; $('ct-doc').appendChild(sentinel);
+  const unlock = () => { signBtn.disabled = false; $('ct-signbox').classList.remove('locked'); };
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((entries) => { if (entries.some(e => e.isIntersecting)) { unlock(); io.disconnect(); } }, { root: modal, threshold: 0 });
+    io.observe(sentinel);
+  } else { unlock(); }
+};
+
+window.declineContractPrompt = function(id) {
+  openModal('Decline agreement', `
+    <p style="font-size:.9rem;">Let us know why, so we can follow up with you.</p>
+    <div class="fg"><label>Reason (optional)</label><textarea id="ct-decline-reason" rows="3"></textarea></div>`, [
+    { label:'Back', cls:'btn-outline', onClick: () => openContractForSigning(id) },
+    { label:'Decline', cls:'btn-danger', onClick: async () => {
+      const { error } = await sb.rpc('c_contract_decline', { p_contract: id, p_reason: v('ct-decline-reason') });
+      if (error) { toast(error.message, {error:true}); return; }
+      notify('contract_declined', { to_email: ADMIN_EMAIL, contractor_name: `${session.contractor.first_name} ${session.contractor.last_name}`, reason: v('ct-decline-reason') });
+      closeModal(); renderNotifBanner(); refreshActiveSection();
+    }}
+  ]);
+};
+
+// ---------- ADMIN SIDE ----------
+async function renderAdminContracts() {
+  const el = $('sec-a-contracts');
+  el.innerHTML = '<div class="page-h">Contracts</div><div class="page-sub">Loading…</div>';
+  const [{ data: rows, error }, { data: tpls }] = await Promise.all([
+    sb.from('c_contracts').select('*, contractor:c_contractors!contractor_id(id, first_name, last_name, email)').order('sent_at', { ascending:false }),
+    sb.from('c_contract_templates').select('id,name,version,is_active,updated_at').order('name')
+  ]);
+  if (error) {
+    el.innerHTML = `<div class="page-h">Contracts</div><p style="color:var(--warn);">${esc(error.message)}</p>
+      <p style="font-size:.82rem;color:var(--muted);">If you just deployed, run <code>supabase/migrations/006_contracts_esign.sql</code> in the Supabase SQL Editor.</p>`;
+    return;
+  }
+  const all = rows || [];
+  const counts = { open: all.filter(r => ['sent','viewed'].includes(r.status)).length, signed: all.filter(r => r.status==='signed').length, declined: all.filter(r => r.status==='declined').length };
+  el.innerHTML = `
+    <div class="page-h">Contracts</div>
+    <div class="page-sub">Send agreements for electronic signature and track them</div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="sl">Awaiting signature</div><div class="sv">${counts.open}</div></div>
+      <div class="stat-card"><div class="sl">Signed</div><div class="sv">${counts.signed}</div></div>
+      <div class="stat-card"><div class="sl">Declined</div><div class="sv">${counts.declined}</div></div>
+      <div class="stat-card"><div class="sl">Templates</div><div class="sv">${(tpls||[]).length}</div></div>
+    </div>
+    <div class="panel-actions" style="margin-bottom:14px;">
+      <button class="btn btn-primary" onclick="openSendContractModal()">+ Send a contract</button>
+      <button class="btn btn-outline" onclick="openTemplateManager()">Manage templates</button>
+    </div>
+    <div class="panel">
+      <div class="panel-title">All contracts (${all.length})</div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Contractor</th><th>Agreement</th><th>Status</th><th>Sent</th><th>Signed</th><th></th></tr></thead>
+        <tbody>${all.map(r => `
+          <tr>
+            <td><strong>${esc(r.contractor?.first_name||'')} ${esc(r.contractor?.last_name||'')}</strong><div style="font-size:.74rem;color:var(--muted);">${esc(r.contractor?.email||'')}</div></td>
+            <td>${esc(r.title)}<div style="font-size:.74rem;color:var(--muted);">v${r.template_version ?? '?'} · ${esc(String(r.body_sha256||'').slice(0,12))}…</div></td>
+            <td><span class="badge ${CONTRACT_STATUS_BADGE[r.status]||'b-inactive'}">${esc(CONTRACT_STATUS_LABEL[r.status]||r.status)}</span>
+                ${r.status==='viewed' && r.first_viewed_at ? `<div style="font-size:.72rem;color:var(--muted);">viewed ${esc(fmtStamp(r.first_viewed_at))}</div>` : ''}
+                ${r.status==='declined' && r.decline_reason ? `<div style="font-size:.72rem;color:var(--muted);">${esc(r.decline_reason)}</div>` : ''}</td>
+            <td style="font-size:.8rem;">${esc(fmtStamp(r.sent_at))}</td>
+            <td style="font-size:.8rem;">${r.signed_at ? esc(fmtStamp(r.signed_at)) : '—'}</td>
+            <td style="white-space:nowrap;">
+              <button class="btn btn-outline btn-sm" onclick="openContractAudit('${r.id}')">Details</button>
+              ${r.status==='signed' ? (r.pdf_path ? `<button class="btn btn-outline btn-sm" onclick="openContractPdf('${esc(r.pdf_path)}')">PDF</button>` : `<button class="btn btn-outline btn-sm" onclick="regenContractPdf('${r.id}')">Make PDF</button>`) : ''}
+              ${['sent','viewed'].includes(r.status) ? `<button class="btn btn-outline btn-sm" onclick="voidContractPrompt('${r.id}')">Void</button>` : ''}
+            </td>
+          </tr>`).join('') || '<tr><td class="empty-row" colspan="6">No contracts sent yet</td></tr>'}
+        </tbody>
+      </table></div>
+    </div>`;
+}
+
+window.openSendContractModal = async function(contractorId) {
+  const [{ data: people }, { data: tpls, error }] = await Promise.all([
+    sb.from('c_contractors').select('*').eq('role','contractor').eq('status','active').order('first_name'),
+    sb.from('c_contract_templates').select('*').eq('is_active', true).order('name')
+  ]);
+  if (error) { toast(error.message, {error:true}); return; }
+  if (!(tpls||[]).length) { toast('No active templates. Add one under Manage templates.', {error:true}); return; }
+  const who = (people||[]);
+  const pick = contractorId || (who[0] && who[0].id);
+  const fill = (c) => {
+    if (!c) return;
+    $('sc-contractor_name').value = `${c.first_name||''} ${c.last_name||''}`.trim();
+    const addr = [c.address_line1, c.address_line2, [c.city, c.state].filter(Boolean).join(', ') + (c.postal_code ? ' ' + c.postal_code : '')].filter(s => s && s.trim()).join(', ');
+    $('sc-contractor_address').value = addr;
+    $('sc-pay_rate').value = Number(c.pay_rate||0).toFixed(2);
+  };
+  openModal('Send a contract for signature', `
+    <div class="form-row">
+      <div class="fg"><label>Contractor</label><select id="sc-contractor">${who.map(c => `<option value="${c.id}" ${c.id===pick?'selected':''}>${esc(c.first_name)} ${esc(c.last_name)} — ${esc(c.email)}</option>`).join('')}</select></div>
+      <div class="fg"><label>Template</label><select id="sc-template">${tpls.map(t => `<option value="${t.id}">${esc(t.name)} (v${t.version})</option>`).join('')}</select></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Contractor legal name</label><input id="sc-contractor_name" /></div>
+      <div class="fg"><label>Effective date</label><input id="sc-effective_date_iso" type="date" value="${todayISO()}" /></div>
+    </div>
+    <div class="fg"><label>Contractor address</label><input id="sc-contractor_address" placeholder="Street, City, ST ZIP" /></div>
+    <div class="form-row">
+      <div class="fg"><label>Pay rate ($/hr)</label><input id="sc-pay_rate" /></div>
+      <div class="fg"><label>Company signer</label><input id="sc-company_signer" value="Jake Lazar" /><div class="help">Title: CEO. You are signing on behalf of LFB when you send.</div></div>
+    </div>
+    <div id="sc-preview-wrap" style="margin-top:10px;"></div>
+    <p style="font-size:.78rem;color:var(--muted);margin-top:8px;">The contractor will see an "Action needed" banner when they next sign in. Email notification goes out once EmailJS is enabled.</p>
+  `, [
+    { label:'Cancel', cls:'btn-outline', onClick: closeModal },
+    { label:'Preview', cls:'btn-outline', onClick: () => {
+      const { body, missing } = buildContractBody();
+      $('sc-preview-wrap').innerHTML = `${missing.length ? `<p style="color:var(--danger);font-size:.82rem;">Unfilled fields: ${esc(missing.join(', '))}</p>` : ''}<div class="ct-wrap" style="max-height:320px;overflow:auto;border:1px solid var(--tan);border-radius:6px;padding:12px;background:var(--white);"><div class="ct-doc">${contractToHtml(body)}</div></div>`;
+    }},
+    { label:'Sign & send', cls:'btn-primary', onClick: async () => {
+      const { body, missing, merge, tpl } = buildContractBody();
+      if (missing.length) { toast('Fill in: ' + missing.join(', '), {error:true}); return; }
+      const cid = $('sc-contractor').value;
+      const { data: newId, error: e } = await sb.rpc('c_contract_send', { p_contractor_id: cid, p_template_id: tpl.id, p_title: tpl.name, p_body: body, p_merge: merge, p_company_signer: v('sc-company_signer') || 'Jake Lazar', p_company_title: 'CEO' });
+      if (e) { toast(e.message, {error:true}); return; }
+      const person = who.find(p => p.id === cid);
+      notify('contract_sent', { to_email: person?.email, contractor_name: merge.contractor_name, contract_title: tpl.name, portal_url: PORTAL_URL });
+      toast(`Sent to ${person?.first_name||'contractor'} for signature`);
+      closeModal(); showSection('a-contracts');
+    }}
+  ]);
+  $('generic-modal').querySelector('.modal').classList.add('modal-wide');
+  function buildContractBody() {
+    const tpl = tpls.find(t => t.id === $('sc-template').value);
+    const rateRaw = v('sc-pay_rate').replace(/[^0-9.]/g,'');
+    const merge = {
+      contractor_name:    v('sc-contractor_name'),
+      contractor_address: v('sc-contractor_address'),
+      effective_date:     fmtLongDate(v('sc-effective_date_iso')),
+      pay_rate:           rateRaw ? `$${Number(rateRaw).toFixed(2)}` : '',
+      company_signer:     v('sc-company_signer') || 'Jake Lazar',
+      company_title:      'CEO'
+    };
+    const body = contractMerge(tpl.body, merge);
+    return { body, missing: contractUnfilled(body), merge, tpl };
+  }
+  $('sc-contractor').onchange = () => fill(who.find(p => p.id === $('sc-contractor').value));
+  fill(who.find(p => p.id === pick));
+};
+
+window.voidContractPrompt = function(id) {
+  openModal('Void contract', `<p style="font-size:.9rem;">This withdraws the agreement before signature. The contractor will no longer be able to sign it.</p><div class="fg"><label>Reason (optional)</label><input id="ct-void-reason" /></div>`, [
+    { label:'Cancel', cls:'btn-outline', onClick: closeModal },
+    { label:'Void', cls:'btn-danger', onClick: async () => {
+      const { error } = await sb.rpc('c_contract_void', { p_contract: id, p_reason: v('ct-void-reason') });
+      if (error) { toast(error.message, {error:true}); return; }
+      closeModal(); refreshActiveSection();
+    }}
+  ]);
+};
+
+window.openContractAudit = async function(id) {
+  const [{ data: c, error }, { data: ev }] = await Promise.all([
+    sb.from('c_contracts').select('*, contractor:c_contractors!contractor_id(first_name,last_name,email)').eq('id', id).single(),
+    sb.from('c_contract_events').select('*').eq('contract_id', id).order('at')
+  ]);
+  if (error) { toast(error.message, {error:true}); return; }
+  const kv = (k, val) => `<tr><td style="font-weight:700;white-space:nowrap;font-size:.8rem;">${esc(k)}</td><td style="font-size:.8rem;word-break:break-all;">${val}</td></tr>`;
+  openModal(`${c.title} — ${c.contractor?.first_name||''} ${c.contractor?.last_name||''}`, `
+    <div class="tbl-wrap"><table><tbody>
+      ${kv('Status', `<span class="badge ${CONTRACT_STATUS_BADGE[c.status]}">${esc(CONTRACT_STATUS_LABEL[c.status]||c.status)}</span>`)}
+      ${kv('Document ID', esc(c.id))}
+      ${kv('SHA-256', `<code>${esc(c.body_sha256)}</code>`)}
+      ${kv('Sent', esc(fmtStamp(c.sent_at)))}
+      ${kv('First viewed', esc(fmtStamp(c.first_viewed_at)))}
+      ${kv('Signed', esc(fmtStamp(c.signed_at)))}
+      ${kv('Typed name', esc(c.signer_typed_name||'—'))}
+      ${kv('Signer IP', esc(c.signer_ip||'—'))}
+      ${kv('Signer device', esc(c.signer_user_agent||'—'))}
+      ${kv('Company signer', `${esc(c.company_signer_name)}, ${esc(c.company_signer_title)} · ${esc(fmtStamp(c.company_signed_at))}`)}
+      ${kv('Merge values', `<code style="font-size:.74rem;">${esc(JSON.stringify(c.merge_values))}</code>`)}
+    </tbody></table></div>
+    <div class="panel-title" style="margin-top:14px;">Event log</div>
+    <div class="tbl-wrap"><table><thead><tr><th>When</th><th>Event</th><th>Who</th><th>IP</th></tr></thead><tbody>
+      ${(ev||[]).map(e => `<tr><td style="font-size:.78rem;white-space:nowrap;">${esc(fmtStamp(e.at))}</td><td><span class="badge b-inactive">${esc(e.event)}</span></td><td style="font-size:.78rem;">${esc(e.actor_email||'')}</td><td style="font-size:.78rem;">${esc(e.ip||'')}</td></tr>`).join('') || '<tr><td class="empty-row" colspan="4">No events</td></tr>'}
+    </tbody></table></div>`, [
+    { label:'View document', cls:'btn-outline', onClick: () => openContractReadOnly(id) },
+    ...(c.pdf_path ? [{ label:'Download PDF', cls:'btn-outline', onClick: () => openContractPdf(c.pdf_path) }] : []),
+    { label:'Close', cls:'btn-primary', onClick: closeModal }
+  ]);
+  $('generic-modal').querySelector('.modal').classList.add('modal-wide');
+};
+
+window.openTemplateManager = async function(editId) {
+  const { data: tpls, error } = await sb.from('c_contract_templates').select('*').order('name').order('version', { ascending:false });
+  if (error) { toast(error.message, {error:true}); return; }
+  const cur = editId ? tpls.find(t => t.id === editId) : null;
+  openModal(cur ? `Edit template: ${cur.name}` : 'Contract templates', cur ? `
+    <div class="form-row">
+      <div class="fg"><label>Name</label><input id="tp-name" value="${esc(cur.name)}" /></div>
+      <div class="fg"><label>Version</label><input id="tp-version" type="number" value="${cur.version}" /><div class="help">Bump this when the wording changes. Existing contracts keep their frozen text.</div></div>
+    </div>
+    <div class="fg"><label>Body</label><textarea id="tp-body" rows="18" style="font-family:ui-monospace,Menlo,monospace;font-size:.78rem;line-height:1.4;">${esc(cur.body)}</textarea>
+      <div class="help">Formatting: <code># Title</code>, <code>## Section heading</code>, blank line between paragraphs. Merge fields: ${CONTRACT_MERGE_FIELDS.map(f => `<code>{{${f.key}}}</code>`).join(' ')}</div></div>
+    <label style="display:flex;gap:8px;align-items:center;font-size:.86rem;margin-top:8px;"><input type="checkbox" id="tp-active" ${cur.is_active?'checked':''}/> Active (available when sending)</label>
+  ` : `
+    <div class="tbl-wrap"><table><thead><tr><th>Template</th><th>Version</th><th>Active</th><th></th></tr></thead><tbody>
+      ${tpls.map(t => `<tr><td>${esc(t.name)}</td><td>v${t.version}</td><td>${t.is_active?'✓':'—'}</td><td><button class="btn btn-outline btn-sm" onclick="openTemplateManager('${t.id}')">Edit</button></td></tr>`).join('') || '<tr><td class="empty-row" colspan="4">No templates</td></tr>'}
+    </tbody></table></div>`, cur ? [
+    { label:'Back', cls:'btn-outline', onClick: () => openTemplateManager() },
+    { label:'Save', cls:'btn-primary', onClick: async () => {
+      const { error: e } = await sb.from('c_contract_templates').update({ name: v('tp-name'), version: Number($('tp-version').value)||1, body: $('tp-body').value, is_active: $('tp-active').checked }).eq('id', cur.id);
+      if (e) { toast(e.message, {error:true}); return; }
+      toast('Template saved'); openTemplateManager();
+    }}
+  ] : [
+    { label:'+ New template', cls:'btn-outline', onClick: async () => {
+      const { data, error: e } = await sb.from('c_contract_templates').insert({ name:'New agreement', version:1, body:'# NEW AGREEMENT\n\nThis Agreement is made effective as of {{effective_date}} between LAZAR FAMILY BAKEHOUSE LLC and {{contractor_name}}.\n\n## 1. SERVICES.\n…', is_active:false, created_by: session.contractor.id }).select().single();
+      if (e) { toast(e.message, {error:true}); return; }
+      openTemplateManager(data.id);
+    }},
+    { label:'Close', cls:'btn-primary', onClick: () => { closeModal(); refreshActiveSection(); } }
+  ]);
+  $('generic-modal').querySelector('.modal').classList.add('modal-wide');
+};
 
 // ============================================================
 // ADMIN — KITCHEN RENT
