@@ -1,0 +1,136 @@
+// LFB Contractor Portal - Notification emails
+// Called from the portal (supabase.functions.invoke) with the signed-in
+// user's JWT. Sends through Resend from the same sender as the partner
+// portal. Recipients are validated server-side: a contractor can only
+// trigger emails to themselves or to the LFB team; admins can email any
+// active contractor. Contractor-facing one-off emails are BCC'd to the team.
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+const FROM_EMAIL = Deno.env.get("DIGEST_FROM") ?? "orders@lazarfamilybakehouse.com";
+const TEAM = ["info@lazarfamilybakehouse.com", "victoria@lazarfamilybakehouse.com"];
+const PORTAL = "https://contractors.lazarfamilybakehouse.com";
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+// Which events go where.
+//   team      -> to TEAM only
+//   self      -> to the contractor (payload.to_email must be caller or admin-chosen contractor); bcc TEAM
+//   broadcast -> to one contractor per call (portal loops); no bcc
+const KIND: Record<string, "team" | "self" | "broadcast"> = {
+  test: "self",
+  contract_sent: "self",
+  contract_signed: "team",
+  contract_declined: "team",
+  signup_confirm: "self",
+  hours_submitted: "team",
+  hours_approved: "self",
+  availability_nudge: "self",
+  shift_new: "broadcast",
+  shift_released: "broadcast",
+  shift_cancelled: "broadcast",
+};
+
+const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
+
+function wrap(title: string, bodyHtml: string, cta?: { label: string; url: string }) {
+  return `<div style="font-family:Georgia,serif;max-width:600px;margin:0 auto;background:#fdf6ee;padding:24px;border-radius:12px;color:#2d1b0e;">
+  <div style="font-family:Arial,sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#fff;background:#e60000;display:inline-block;padding:4px 10px;border-radius:4px;margin-bottom:14px;">Contractor Portal</div>
+  <h2 style="margin:0 0 10px;color:#2d1b0e;">${title}</h2>
+  <div style="font-size:15px;line-height:1.55;">${bodyHtml}</div>
+  ${cta ? `<p style="margin:20px 0 6px;"><a href="${cta.url}" style="background:#e60000;color:#fff;text-decoration:none;padding:11px 18px;border-radius:6px;font-family:Arial,sans-serif;font-weight:bold;display:inline-block;">${esc(cta.label)}</a></p>` : ""}
+  <p style="color:#b0a08c;font-size:12px;margin-top:20px;">Lazar Family Bakehouse · ${PORTAL.replace("https://", "")}</p>
+</div>`;
+}
+
+function build(event: string, p: Record<string, unknown>) {
+  const url = String(p.portal_url || PORTAL);
+  const name = esc(p.first_name || "there");
+  switch (event) {
+    case "test":
+      return { subject: "Test email from the Contractor Portal", html: wrap("It works", `<p>Hi ${name}, this is a test message from the LFB Contractor Portal. Email notifications are live.</p>`, { label: "Open the portal", url }) };
+    case "contract_sent":
+      return { subject: `Please review and sign: ${p.contract_title}`, html: wrap("Your agreement is ready to sign", `<p>Hi ${esc(p.contractor_name || p.first_name || "there")},</p><p>Lazar Family Bakehouse has sent you the <strong>${esc(p.contract_title)}</strong> to review and sign electronically. Sign in to the Contractor Portal, open <strong>Agreements</strong>, read through it, and sign when you're ready. You'll get a PDF copy right away.</p>`, { label: "Review & sign", url }) };
+    case "contract_signed":
+      return { subject: `✍️ ${p.contractor_name} signed the ${p.contract_title}`, html: wrap("Contract signed", `<p><strong>${esc(p.contractor_name)}</strong> just signed the <strong>${esc(p.contract_title)}</strong>. The signed PDF with the signature page and audit certificate is in the Contracts tab.</p>`, { label: "Open Contracts", url }) };
+    case "contract_declined":
+      return { subject: `⚠️ ${p.contractor_name} declined to sign`, html: wrap("Contract declined", `<p><strong>${esc(p.contractor_name)}</strong> declined the agreement.</p>${p.reason ? `<p>Reason given: <em>${esc(p.reason)}</em></p>` : "<p>No reason was given.</p>"}<p>You may want to reach out and, if needed, send a revised version from the Contracts tab.</p>`, { label: "Open Contracts", url }) };
+    case "signup_confirm":
+      return { subject: `You're on the schedule: ${p.bake_date}`, html: wrap("You're signed up", `<p>Hi ${name}, you're confirmed for the bake on <strong>${esc(p.bake_date)}</strong> starting at <strong>${esc(p.start_time)}</strong> at ${esc(p.location)}.</p><p>Notes: ${esc(p.shift_notes)}</p><p>If plans change, release your spot in the portal as early as you can so someone else can take it.</p>`, { label: "View my shifts", url }) };
+    case "hours_submitted":
+      return { subject: `Hours submitted: ${p.contractor_name}, ${p.bake_date}`, html: wrap("Hours waiting for approval", `<p><strong>${esc(p.contractor_name)}</strong> submitted <strong>${esc(p.submitted_hours)} hours</strong> for ${esc(p.bake_date)}.</p><p>Notes: ${esc(p.submitted_notes)}</p>`, { label: "Review in Approvals", url }) };
+    case "hours_approved":
+      return { subject: `Hours approved for ${p.bake_date}`, html: wrap("Your hours were approved", `<p>Hi ${name}, your hours for <strong>${esc(p.bake_date)}</strong> were approved: <strong>${esc(p.approved_hours)} hrs × ${esc(p.pay_rate)} = ${esc(p.approved_amount)}</strong>.</p>${p.admin_notes_line ? `<p>${esc(p.admin_notes_line)}</p>` : ""}<p style="color:#7a6a58;font-size:14px;">Year to date: ${esc(p.ytd_hours)} hrs · paid ${esc(p.ytd_paid)} · pending ${esc(p.ytd_pending)}</p>`, { label: "View payments", url }) };
+    case "availability_nudge":
+      return { subject: "Quick favor: update your availability", html: wrap("Help us plan the next bakes", `<p>Hi ${name}, your availability in the portal looks out of date. It takes a minute to mark the days you're free, and it's how we decide when to schedule bakes.</p>`, { label: "Update availability", url }) };
+    case "shift_new":
+      return { subject: `New bake posted: ${p.bake_date} at ${p.start_time}`, html: wrap("A new bake is open", `<p>Hi ${name}, a bake just opened on <strong>${esc(p.bake_date)}</strong> starting at <strong>${esc(p.start_time)}</strong> at ${esc(p.location)} (${esc(p.spots_total)} spot${String(p.spots_total) === "1" ? "" : "s"}).</p><p>Notes: ${esc(p.shift_notes)}</p><p>Spots are first come, first served.</p>`, { label: "Claim a spot", url }) };
+    case "shift_released":
+      return { subject: `A spot opened up: ${p.bake_date}`, html: wrap("A spot just opened", `<p>Hi ${name}, someone released their spot for the bake on <strong>${esc(p.bake_date)}</strong> at <strong>${esc(p.start_time)}</strong> (${esc(p.location)}). If you're free, grab it in the portal.</p>`, { label: "Claim the spot", url }) };
+    case "shift_cancelled":
+      return { subject: `Cancelled: bake on ${p.bake_date}`, html: wrap("Bake cancelled", `<p>Hi ${name}, the bake on <strong>${esc(p.bake_date)}</strong> at ${esc(p.location)} has been cancelled.</p>${p.cancel_reason_line ? `<p>${esc(p.cancel_reason_line)}</p>` : ""}<p>Sorry for the change. Keep an eye on the schedule for the next one.</p>`, { label: "See the schedule", url }) };
+    default:
+      return null;
+  }
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { ...CORS, "Content-Type": "application/json" } });
+  try {
+    if (!RESEND_API_KEY) return json({ error: "RESEND_API_KEY not set" }, 500);
+    const auth = req.headers.get("Authorization") || "";
+    const sbUser = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
+    const { data: { user }, error: uErr } = await sbUser.auth.getUser();
+    if (uErr || !user) return json({ error: "not signed in" }, 401);
+
+    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: me } = await sb.from("c_contractors").select("id,email,role,status,first_name").eq("user_id", user.id).maybeSingle();
+    if (!me || me.status !== "active") return json({ error: "no active contractor profile" }, 403);
+    const isAdmin = me.role === "admin";
+
+    const body = await req.json().catch(() => ({}));
+    const event = String(body.event || "");
+    const kind = KIND[event];
+    if (!kind) return json({ error: "unknown event " + event }, 400);
+
+    // Resolve recipients
+    let to: string[] = [];
+    let bcc: string[] = [];
+    const want = String(body.to_email || "").toLowerCase().trim();
+    if (kind === "team") {
+      to = TEAM;
+    } else {
+      const { data: actives } = await sb.from("c_contractors").select("email").eq("status", "active");
+      const allowed = new Set((actives || []).map((r: { email: string }) => String(r.email).toLowerCase()));
+      if (!want) return json({ error: "to_email required" }, 400);
+      if (isAdmin) {
+        if (!allowed.has(want) && !TEAM.includes(want)) return json({ error: "recipient is not an active contractor" }, 400);
+      } else {
+        const selfOk = want === String(me.email).toLowerCase();
+        const broadcastOk = kind === "broadcast" && event === "shift_released" && allowed.has(want);
+        if (!selfOk && !broadcastOk) return json({ error: "not allowed to email that recipient" }, 403);
+      }
+      to = [want];
+      if (kind === "self" && event !== "test") bcc = TEAM.filter((t) => t !== want);
+    }
+
+    const msg = build(event, body);
+    if (!msg) return json({ error: "no template for " + event }, 400);
+
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + RESEND_API_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: "Lazar Family Bakehouse <" + FROM_EMAIL + ">", to, ...(bcc.length ? { bcc } : {}), reply_to: "info@lazarfamilybakehouse.com", subject: msg.subject, html: msg.html }),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) return json({ error: "resend " + res.status, detail: out }, 502);
+    return json({ sent: to.length, to, bcc, id: out.id });
+  } catch (e) {
+    return json({ error: String((e as Error)?.message || e) }, 500);
+  }
+});
