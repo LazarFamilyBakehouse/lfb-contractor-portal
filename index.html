@@ -3717,7 +3717,8 @@ window.openBulkImportContractsModal = async function() {
     if (!best) best = who.find(p => key.includes(norm(p.first_name)) && norm(p.first_name).length > 2);
     const m = base.match(/^(\d{4})(\d{2})(\d{2})/);
     const date = m ? `${m[1]}-${m[2]}-${m[3]}` : todayISO();
-    return { contractorId: best ? best.id : '', date };
+    const title = /consult/i.test(base) ? 'Consulting Agreement' : /nda|confidential/i.test(base) ? 'Non-Disclosure Agreement' : 'Independent Contractor Agreement';
+    return { contractorId: best ? best.id : '', date, title };
   };
   let files = [];
   openModal('Bulk import signed contracts', `
@@ -3729,7 +3730,7 @@ window.openBulkImportContractsModal = async function() {
     { label:'Cancel', cls:'btn-outline', onClick: closeModal },
     { label:'Import all', cls:'btn-primary', onClick: async () => {
       if (!files.length) { toast('Choose the PDFs first', {error:true}); return; }
-      const rows = files.map((f, i) => ({ file: f, cid: $(`bi-c-${i}`).value, date: $(`bi-d-${i}`).value }));
+      const rows = files.map((f, i) => ({ file: f, cid: $(`bi-c-${i}`).value, date: $(`bi-d-${i}`).value, title: v(`bi-t-${i}`) || 'Independent Contractor Agreement' }));
       const bad = rows.filter(r => !r.cid);
       if (bad.length) { toast(`${bad.length} file(s) have no contractor selected`, {error:true}); return; }
       const btns = $('generic-modal-actions').querySelectorAll('button'); btns.forEach(b => b.disabled = true);
@@ -3746,7 +3747,7 @@ window.openBulkImportContractsModal = async function() {
           if (upErr) throw upErr;
           const signedAt = new Date(r.date + 'T12:00:00').toISOString();
           const { error: insErr } = await sb.from('c_contracts').insert({
-            contractor_id: r.cid, title:'Independent Contractor Agreement',
+            contractor_id: r.cid, title: r.title,
             body_rendered: `[Imported signed document: ${r.file.name}]\n\nThis agreement was signed outside the portal (e-signed PDF returned by email) on ${r.date} and imported by an administrator. The signed file is attached; its SHA-256 fingerprint is ${sha}.`,
             body_sha256: sha, merge_values: { imported:true, method:'email_esign', original_filename: r.file.name },
             status:'signed', signed_at: signedAt, signer_typed_name: `${person?.first_name||''} ${person?.last_name||''}`.trim(),
@@ -3766,10 +3767,11 @@ window.openBulkImportContractsModal = async function() {
   $('generic-modal').querySelector('.modal').classList.add('modal-wide');
   $('bi-files').onchange = () => {
     files = [...$('bi-files').files];
-    $('bi-table').innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>File</th><th>Contractor</th><th>Date signed</th></tr></thead><tbody>
+    $('bi-table').innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>File</th><th>Contractor</th><th>Agreement</th><th>Date signed</th></tr></thead><tbody>
       ${files.map((f, i) => { const g = guess(f.name); return `<tr>
         <td style="font-size:.8rem;">${esc(f.name)}<div style="color:var(--muted);font-size:.72rem;">${(f.size/1024).toFixed(0)} KB</div></td>
         <td><select id="bi-c-${i}" style="font-size:.84rem;"><option value="">— pick —</option>${who.map(p => `<option value="${p.id}" ${p.id===g.contractorId?'selected':''}>${esc(p.first_name)} ${esc(p.last_name)}</option>`).join('')}</select>${g.contractorId ? '' : '<div style="color:var(--danger);font-size:.72rem;">No match: add them under Contractors first, or pick manually</div>'}</td>
+        <td><input id="bi-t-${i}" value="${esc(g.title)}" style="font-size:.84rem;min-width:170px;" /></td>
         <td><input id="bi-d-${i}" type="date" value="${g.date}" style="font-size:.84rem;" /></td>
       </tr>`; }).join('')}
     </tbody></table></div>`;
