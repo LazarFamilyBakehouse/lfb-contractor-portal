@@ -690,6 +690,24 @@ tbody td { padding:10px 12px; color:var(--brown-dk); vertical-align:top; }
   .card-actions .btn { flex:0 0 auto; }
 }
 
+/* ── Time clock ─────────────────────────────────────────── */
+.clock-panel { border-left:4px solid var(--accent); }
+.clock-panel.on { background:linear-gradient(135deg, #fff 0%, #ffecec 100%); }
+.clock-row { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+.clock-time { font-family:'Playfair Display',serif; font-size:2.2rem; line-height:1; color:var(--brown-dk); font-variant-numeric:tabular-nums; letter-spacing:.02em; }
+.clock-sub { color:var(--muted); font-size:.86rem; margin-top:4px; }
+.clock-dot { display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--accent); margin-right:6px; animation:clockpulse 1.4s ease-in-out infinite; vertical-align:middle; }
+@keyframes clockpulse { 0%,100% { opacity:1; transform:scale(1);} 50% { opacity:.35; transform:scale(.8);} }
+.btn-clock { font-size:1.05rem; padding:14px 26px; border-radius:999px; min-width:160px; }
+.te-list { display:flex; flex-direction:column; gap:6px; margin-top:10px; }
+.te-item { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:.86rem; padding:8px 10px; background:var(--cream); border-radius:6px; flex-wrap:wrap; }
+.te-item .te-when { color:var(--brown-dk); }
+.te-item .te-hrs { font-weight:600; }
+.b-open { background:#ffe3e3; color:var(--accent-dk); }
+.b-rejected { background:#eee; color:#666; }
+.te-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+@media (max-width:639px) { .te-grid { grid-template-columns:1fr; } .clock-time { font-size:1.9rem; } .btn-clock { width:100%; } }
+
 @media print {
   .portal-banner, header, nav, .form-actions, .modal-actions, .btn { display:none !important; }
   body { background:#fff !important; }
@@ -760,7 +778,7 @@ tbody td { padding:10px 12px; color:var(--brown-dk); vertical-align:top; }
      GENERIC MODAL CONTAINER
      We use one shared modal element rather than a separate
      element per modal (the wholesale portal uses one per feature
-     — for the contractor portal, the smaller surface area lets
+    , for the contractor portal, the smaller surface area lets
      us share one).
      ============================================================ -->
 <div class="modal-overlay" id="generic-modal">
@@ -780,13 +798,13 @@ tbody td { padding:10px 12px; color:var(--brown-dk); vertical-align:top; }
 /* ============================================================
    CONFIG
    ============================================================ */
-// SUPABASE — same project as the wholesale portal (anon key is
+// SUPABASE, same project as the wholesale portal (anon key is
 // safe to publish per Supabase design; RLS protects all data).
 const SUPABASE_URL  = 'https://ylvoswzsijigyezqvaat.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlsdm9zd3pzaWppZ3llenF2YWF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2Mjk5MTAsImV4cCI6MjA4OTIwNTkxMH0.iA4QMZkxTsqArV3CgHb-YluiBeiIq5RppGV6kBe8G8g';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-// ─── EmailJS — PLACEHOLDERS ────────────────────────────────────
+// ─── EmailJS, PLACEHOLDERS ────────────────────────────────────
 // When the second EmailJS account is created (see docs/EMAILJS.md),
 // paste the credentials here and set EMAILJS_ENABLED to true.
 // Until then, notify() is a no-op (console-logs the intent).
@@ -828,7 +846,7 @@ const STORAGE_KEYS = {
 };
 
 /* ============================================================
-   NOTIFY — single email/notification entry point.
+   NOTIFY, single email/notification entry point.
    Sends through the `contractor-notify` Supabase Edge Function
    (Resend, same sender as the partner portal). The function checks
    the caller's login and decides recipients server-side; the
@@ -866,12 +884,12 @@ function esc(s){
 }
 function fmtCur(n){ return '$'+(Number(n)||0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','); }
 function fmtDate(d){
-  if (!d) return '—';
+  if (!d) return '-';
   const [y,m,day] = String(d).split('T')[0].split('-');
   return new Date(+y,+m-1,+day).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 }
 function fmtDateShort(d){
-  if (!d) return '—';
+  if (!d) return '-';
   const [y,m,day] = String(d).split('T')[0].split('-');
   return new Date(+y,+m-1,+day).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
 }
@@ -881,7 +899,7 @@ function fmtDay(d){
   return new Date(+y,+m-1,+day).toLocaleDateString('en-US',{weekday:'long'});
 }
 function fmtTime(t){
-  if (!t) return '—';
+  if (!t) return '-';
   const [h,m] = String(t).split(':');
   const d = new Date();
   d.setHours(+h, +m||0, 0, 0);
@@ -927,7 +945,7 @@ function closeModal(){ $('generic-modal').classList.remove('open'); $('generic-m
 function resetInactivityTimer(){
   clearTimeout(_inactivityTimer);
   _inactivityTimer = setTimeout(()=>{
-    toast('Signed out — inactivity timeout', {error:true});
+    toast('Signed out, inactivity timeout', {error:true});
     signOut();
   }, INACTIVITY_TIMEOUT_MS);
 }
@@ -1103,7 +1121,7 @@ const CONTRACTOR_SECTIONS = [
 
 function currentSections(){ return session.role === 'admin' ? ADMIN_SECTIONS : CONTRACTOR_SECTIONS; }
 
-const PRIMARY_NAV = { admin: ['a-dashboard','a-shifts','a-approvals','a-contracts'], contractor: ['c-home','c-schedule','c-myshifts','c-payments'] };
+const PRIMARY_NAV = { admin: ['a-guide','a-dashboard','a-shifts','a-approvals'], contractor: ['c-guide','c-home','c-schedule','c-myshifts'] };
 function navIsPrimary(id){ return (PRIMARY_NAV[session.role] || []).includes(id); }
 function buildNav() {
   const nav = $('main-nav');
@@ -1203,7 +1221,7 @@ async function renderNotifBanner() {
     else if (days <= 30) items.push({ key:'food-exp', type:'warning', text:`Your food handler card expires in ${days} day${days===1?'':'s'}.` });
   }
 
-  // Unsigned agreement waiting (contractor) — not dismissable
+  // Unsigned agreement waiting (contractor), not dismissable
   if (session.role === 'contractor') {
     try {
       const { data: open } = await sb.from('c_contracts').select('id,title').in('status',['sent','viewed']).eq('contractor_id', c.id);
@@ -1232,7 +1250,7 @@ async function renderNotifBanner() {
 }
 
 /* ============================================================
-   SECTION RENDERERS — populated in the next blocks
+   SECTION RENDERERS, populated in the next blocks
    Each renderer fetches the data it needs and writes HTML into
    its #sec-<id> container. They are called every time the
    section is shown OR when realtime fires a refresh.
@@ -1297,7 +1315,7 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 /* ============================================================
-   SECTION IMPLEMENTATIONS — appended below by Edits
+   SECTION IMPLEMENTATIONS, appended below by Edits
    Marker: SECTION_IMPLS_INSERT_HERE
    ============================================================ */
 // ============================================================
@@ -1733,15 +1751,16 @@ function monthInfo(year, month0) {
 }
 
 // ============================================================
-// CONTRACTOR — HOME
+// CONTRACTOR, HOME
 // ============================================================
 async function renderContractorHome() {
   const el = $('sec-c-home');
   el.innerHTML = '<div class="page-h">Welcome back</div><div class="page-sub">Loading…</div>';
-  const [myShifts, ytd, openShifts] = await Promise.all([
+  const [myShifts, ytd, openShifts, clockHtml] = await Promise.all([
     loadMyShifts(),
     loadYTDSummary(),
-    loadShiftsWithCounts({ from: todayISO(), statuses: ['open'] })
+    loadShiftsWithCounts({ from: todayISO(), statuses: ['open'] }),
+    timeClockCardHtml()
   ]);
   const me = (ytd||[]).find(r => r.contractor_id === session.contractor.id) || {};
 
@@ -1787,6 +1806,8 @@ async function renderContractorHome() {
     <div class="page-h">Welcome back, ${esc(c.first_name||'baker')}</div>
     <div class="page-sub">Lazar Family Bakehouse · Contractor</div>
 
+    ${clockHtml}
+
     <div class="stats-grid">
       <div class="stat-card"><div class="sl">Hours YTD</div><div class="sv">${(me.approved_hours||0).toFixed(1)}</div><div class="sh">approved</div></div>
       <div class="stat-card"><div class="sl">Earned YTD</div><div class="sv">${fmtCur(me.earned_amount||0)}</div><div class="sh">${fmtCur(me.paid_amount||0)} paid</div></div>
@@ -1820,8 +1841,170 @@ async function renderContractorHome() {
   `;
 }
 
+// ============================================================
+// TIME CLOCK (contractor side)
+// ============================================================
+let _clockTimer = null;
+
+function fmtClockTime(ts) {
+  if (!ts) return '-';
+  return new Date(ts).toLocaleTimeString('en-US', { timeZone:'America/Denver', hour:'numeric', minute:'2-digit' });
+}
+function fmtElapsed(ms) {
+  const s = Math.max(0, Math.floor(ms/1000));
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+  return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+}
+function teStatusBadge(t) {
+  const map = { open:['b-open','On the clock'], submitted:['b-pending','Awaiting approval'], approved:['b-approved','Approved'], rejected:['b-rejected','Not approved'] };
+  const [cls, label] = map[t.status] || ['', t.status];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+function teHoursLabel(t) {
+  if (t.status === 'approved') return `${Number(t.approved_hours).toFixed(2)} hrs`;
+  if (t.worked_hours != null) return `${Number(t.worked_hours).toFixed(2)} hrs`;
+  return '';
+}
+
+async function loadMyTimeEntries(limit = 6) {
+  const { data, error } = await sb.from('c_time_entries')
+    .select('*, shift:c_shifts(bake_date, location, start_time)')
+    .eq('contractor_id', session.contractor.id)
+    .order('clock_in', { ascending: false })
+    .limit(limit);
+  if (error) { toast(error.message, {error:true}); return []; }
+  return data || [];
+}
+
+async function timeClockCardHtml() {
+  const entries = await loadMyTimeEntries(6);
+  const open = entries.find(t => t.status === 'open');
+  const recent = entries.filter(t => t.status !== 'open').slice(0, 5);
+  clearInterval(_clockTimer);
+
+  let body;
+  if (open) {
+    const since = new Date(open.clock_in).getTime();
+    _clockTimer = setInterval(() => {
+      const el = $('clock-elapsed');
+      if (!el) { clearInterval(_clockTimer); return; }
+      el.textContent = fmtElapsed(Date.now() - since);
+    }, 1000);
+    body = `
+      <div class="clock-row">
+        <div>
+          <div class="clock-time" id="clock-elapsed">${fmtElapsed(Date.now() - since)}</div>
+          <div class="clock-sub"><span class="clock-dot"></span>Clocked in at ${fmtClockTime(open.clock_in)}${open.shift ? ` · ${esc(open.shift.location)}` : ''}</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-primary btn-clock" onclick="clockOutPrompt('${open.id}')">Clock out</button>
+          <button class="btn btn-outline btn-sm" onclick="cancelClockIn('${open.id}')" title="Remove this clock-in if you tapped it by mistake">Undo</button>
+        </div>
+      </div>`;
+  } else {
+    body = `
+      <div class="clock-row">
+        <div>
+          <div class="clock-time">${new Date().toLocaleTimeString('en-US',{ timeZone:'America/Denver', hour:'numeric', minute:'2-digit' })}</div>
+          <div class="clock-sub">Not clocked in. Tap when you start work; tap again when you finish.</div>
+        </div>
+        <button class="btn btn-primary btn-clock" id="clock-in-btn" onclick="clockIn()">Clock in</button>
+      </div>`;
+  }
+
+  const recentHtml = recent.length ? `
+    <div class="te-list">
+      ${recent.map(t => `
+        <div class="te-item">
+          <span class="te-when">${esc(fmtDateShort(t.work_date))} · ${fmtClockTime(t.clock_in)} to ${fmtClockTime(t.clock_out)}${t.break_minutes ? ` (${t.break_minutes} min break)` : ''}</span>
+          <span style="display:flex;gap:8px;align-items:center;">
+            <span class="te-hrs">${teHoursLabel(t)}</span>${teStatusBadge(t)}
+            ${t.status === 'submitted' ? `<button class="btn btn-outline btn-sm" onclick="cancelClockIn('${t.id}')" title="Remove this entry">Remove</button>` : ''}
+          </span>
+          ${t.admin_notes ? `<div style="flex-basis:100%;font-size:.8rem;color:var(--muted);">Note from admin: ${esc(t.admin_notes)}</div>` : ''}
+        </div>`).join('')}
+    </div>` : '';
+
+  return `
+    <div class="panel clock-panel ${open ? 'on' : ''}">
+      <div class="panel-title">Time clock</div>
+      ${body}
+      ${recentHtml}
+    </div>`;
+}
+
+function getPositionQuick() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) return resolve(null);
+    let done = false;
+    const finish = (p) => { if (!done) { done = true; resolve(p); } };
+    navigator.geolocation.getCurrentPosition(
+      pos => finish({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => finish(null), { timeout: 4000, maximumAge: 300000 });
+    setTimeout(() => finish(null), 4500);
+  });
+}
+
+window.clockIn = async function() {
+  const btn = $('clock-in-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Clocking in...'; }
+  try {
+    const pos = await getPositionQuick();
+    const { error } = await sb.rpc('c_clock_in', { p_shift_id: null, p_notes: '', p_lat: pos ? pos.lat : null, p_lng: pos ? pos.lng : null });
+    if (error) throw error;
+    toast('Clocked in. Have a good bake!');
+    refreshActiveSection();
+  } catch (e) {
+    toast(e.message || 'Could not clock in', {error:true});
+    if (btn) { btn.disabled = false; btn.textContent = 'Clock in'; }
+  }
+};
+
+window.clockOutPrompt = function(entryId) {
+  openModal('Clock out', `
+    <p style="font-size:.9rem;color:var(--muted);margin-top:0;">Your time goes to the admin for approval. Approved hours show up in Payments.</p>
+    <div class="fg"><label>Unpaid break (minutes)</label><input id="co-break" type="number" min="0" max="480" step="5" value="0" inputmode="numeric" /></div>
+    <div class="fg"><label>Notes for admin (optional)</label><input id="co-notes" placeholder="e.g. stayed late to finish bagging" /></div>
+  `, [
+    { label:'Cancel' },
+    { label:'Clock out', cls:'btn-primary', onClick: async () => {
+        const brk = Number(v('co-break') || 0), notes = v('co-notes');
+        try {
+          const pos = await getPositionQuick();
+          const { data, error } = await sb.rpc('c_clock_out', { p_entry_id: entryId, p_notes: notes || null, p_break_minutes: brk, p_lat: pos ? pos.lat : null, p_lng: pos ? pos.lng : null });
+          if (error) throw error;
+          closeModal();
+          toast(`Clocked out: ${Number(data.worked_hours).toFixed(2)} hours sent for approval`);
+          notify('hours_submitted', {
+            to_email:        ADMIN_EMAIL,
+            contractor_name: `${session.contractor.first_name} ${session.contractor.last_name}`.trim(),
+            bake_date:       fmtDate(data.work_date),
+            submitted_hours: Number(data.worked_hours).toFixed(2),
+            submitted_notes: `Time clock: in ${fmtClockTime(data.clock_in)}, out ${fmtClockTime(data.clock_out)}${brk ? `, ${brk} min break` : ''}${notes ? `. ${notes}` : ''}`,
+            portal_url:      PORTAL_URL
+          });
+          refreshActiveSection();
+        } catch (e) { toast(e.message || 'Could not clock out', {error:true}); }
+      } }
+  ]);
+};
+
+window.cancelClockIn = function(entryId) {
+  openModal('Remove time entry', `<p style="margin:0;">Remove this time entry? This cannot be undone.</p>`, [
+    { label:'Keep it' },
+    { label:'Remove', cls:'btn-danger', onClick: async () => {
+        try {
+          const { error } = await sb.rpc('c_time_entry_cancel', { p_entry_id: entryId });
+          if (error) throw error;
+          closeModal();
+          toast('Entry removed');
+          refreshActiveSection();
+        } catch (e) { toast(e.message || 'Could not remove', {error:true}); }
+      } }
+  ]);
+};
+
 function shiftCardHtml(s, contractorView) {
-  const urgent = (contractorView && s.spots_left > 0 && daysFromToday(s.bake_date) <= 2 && s.status === 'open');
+  const urgent =(contractorView && s.spots_left > 0 && daysFromToday(s.bake_date) <= 2 && s.status === 'open');
   const fillBar = `${s.spots_filled}/${s.spots_total} signed up`;
   const isTentative = s.status === 'tentative';
   const startTimesDisplay = (s.start_times && s.start_times.length > 0)
@@ -1830,7 +2013,7 @@ function shiftCardHtml(s, contractorView) {
   let action;
   if (contractorView) {
     if (isTentative) {
-      action = `<button class="btn btn-outline btn-sm" disabled>Tentative — locked</button>`;
+      action = `<button class="btn btn-outline btn-sm" disabled>Tentative, locked</button>`;
     } else if (s.i_signed_up) {
       action = `<button class="btn btn-outline btn-sm" disabled>Signed up</button>`;
     } else if (s.spots_left > 0) {
@@ -1871,7 +2054,7 @@ function shiftCardHtml(s, contractorView) {
 window.signUpForShift = async function(shiftId) {
   try {
     await contractorSignUpForShift(shiftId);
-    toast('Signed up — confirmation sent to your email');
+    toast('Signed up, confirmation sent to your email');
     refreshActiveSection();
   } catch (e) { toast(e.message || 'Sign-up failed', {error:true}); }
 };
@@ -1894,7 +2077,7 @@ window.releaseSignupConfirm = function(signupId, dateLabel) {
 };
 
 // ============================================================
-// CONTRACTOR — SCHEDULE
+// CONTRACTOR, SCHEDULE
 // ============================================================
 async function renderContractorSchedule() {
   const el = $('sec-c-schedule');
@@ -1919,7 +2102,7 @@ async function renderContractorSchedule() {
 }
 
 // ============================================================
-// CONTRACTOR — MY SHIFTS
+// CONTRACTOR, MY SHIFTS
 // ============================================================
 async function renderContractorMyShifts() {
   const el = $('sec-c-myshifts');
@@ -2022,7 +2205,7 @@ async function renderContractorMyShifts() {
       <div class="panel">
         <div class="panel-title">Approved (${approved.length})</div>
         <div class="card-list">${approved.slice(0,10).map(approvedCard).join('')}</div>
-        ${approved.length > 10 ? `<p style="color:var(--muted);font-size:.84rem;margin-top:8px;">Showing 10 of ${approved.length} — see <button class="login-link" onclick="showSection('c-payments')">Payments</button> for full history.</p>` : ''}
+        ${approved.length > 10 ? `<p style="color:var(--muted);font-size:.84rem;margin-top:8px;">Showing 10 of ${approved.length}, see <button class="login-link" onclick="showSection('c-payments')">Payments</button> for full history.</p>` : ''}
       </div>
     ` : ''}
   `;
@@ -2038,7 +2221,7 @@ window.openSubmitHoursModal = function(signupId, shiftId, dateLabel) {
     </div>
     <div class="fg">
       <label for="${formId}-notes">Notes (optional)</label>
-      <textarea id="${formId}-notes" rows="3" placeholder="Anything admin should know — e.g. arrived 15 min early, finished a special order, etc."></textarea>
+      <textarea id="${formId}-notes" rows="3" placeholder="Anything admin should know, e.g. arrived 15 min early, finished a special order, etc."></textarea>
     </div>
   `, [
     { label:'Cancel', cls:'btn-outline', onClick: closeModal },
@@ -2049,7 +2232,7 @@ window.openSubmitHoursModal = function(signupId, shiftId, dateLabel) {
       try {
         await contractorSubmitHours(signupId, shiftId, hrs, notes);
         closeModal();
-        toast('Submitted — admin will review and approve');
+        toast('Submitted, admin will review and approve');
         refreshActiveSection();
       } catch (e) { toast(e.message || 'Submit failed', {error:true}); }
     }}
@@ -2057,7 +2240,7 @@ window.openSubmitHoursModal = function(signupId, shiftId, dateLabel) {
 };
 
 // ============================================================
-// CONTRACTOR — AVAILABILITY (calendar)
+// CONTRACTOR, AVAILABILITY (calendar)
 // ============================================================
 const _avState = { year: new Date().getFullYear(), month: new Date().getMonth(), selected: new Set(), data: {} };
 
@@ -2074,7 +2257,7 @@ async function renderContractorAvailability() {
 
   el.innerHTML = `
     <div class="page-h">My Availability</div>
-    <div class="page-sub">Mark which days you're free, busy, or tentative — the more dates you fill, the better we can plan shifts around you</div>
+    <div class="page-sub">Mark which days you're free, busy, or tentative, the more dates you fill, the better we can plan shifts around you</div>
 
     <div class="cal-wrap">
       <div class="cal-header">
@@ -2113,7 +2296,7 @@ async function renderContractorAvailability() {
         <button class="btn btn-outline btn-sm" onclick="availPresetWeekdaysBusy90()">All weekdays busy · next 3 months</button>
         <button class="btn btn-danger btn-sm" onclick="availPresetClear90()">Clear next 3 months</button>
       </div>
-      <p style="font-size:.78rem;color:var(--muted);margin-top:8px;">Presets are a fast starting point — tap individual days to fine-tune.</p>
+      <p style="font-size:.78rem;color:var(--muted);margin-top:8px;">Presets are a fast starting point, tap individual days to fine-tune.</p>
     </div>
   `;
   renderAvailabilityGrid();
@@ -2238,7 +2421,7 @@ window.availPresetClear90 = async function() {
 };
 
 // ============================================================
-// CONTRACTOR — PAYMENTS
+// CONTRACTOR, PAYMENTS
 // ============================================================
 async function renderContractorPayments() {
   const el = $('sec-c-payments');
@@ -2303,7 +2486,7 @@ async function renderContractorPayments() {
                 <td>${esc(fmtDateShort(p.paid_on))}</td>
                 <td><strong>${fmtCur(p.amount)}</strong></td>
                 <td>${esc(p.method)}</td>
-                <td>${esc(p.reference||'—')}</td>
+                <td>${esc(p.reference||'-')}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -2314,7 +2497,7 @@ async function renderContractorPayments() {
 }
 
 // ============================================================
-// CONTRACTOR — PROFILE
+// CONTRACTOR, PROFILE
 // ============================================================
 async function renderContractorProfile() {
   const el = $('sec-c-profile');
@@ -2323,7 +2506,7 @@ async function renderContractorProfile() {
   const c = session.contractor;
   el.innerHTML = `
     <div class="page-h">Profile</div>
-    <div class="page-sub">Keep this current — admin reaches out using this info</div>
+    <div class="page-sub">Keep this current, admin reaches out using this info</div>
 
     <div class="panel">
       <div class="panel-title">Personal info</div>
@@ -2332,7 +2515,7 @@ async function renderContractorProfile() {
         <div class="fg"><label>Last name</label><input id="p-last" value="${esc(c.last_name||'')}" /></div>
       </div>
       <div class="form-row">
-        <div class="fg"><label>Email</label><input value="${esc(c.email||'')}" readonly /><div class="help">Email is locked — contact admin to change.</div></div>
+        <div class="fg"><label>Email</label><input value="${esc(c.email||'')}" readonly /><div class="help">Email is locked, contact admin to change.</div></div>
         <div class="fg"><label>Phone</label><input id="p-phone" type="tel" inputmode="tel" value="${esc(c.phone||'')}" /></div>
       </div>
       <div class="form-row">
@@ -2485,16 +2668,19 @@ window.saveProfile = async function() {
 };
 
 // ============================================================
-// ADMIN — DASHBOARD
+// ADMIN, DASHBOARD
 // ============================================================
 async function renderAdminDashboard() {
   const el = $('sec-a-dashboard');
   el.innerHTML = '<div class="page-h">Admin Dashboard</div><div class="page-sub">Loading…</div>';
-  const [ytd, pending, openShifts] = await Promise.all([
+  const [ytd, pending, openShifts, timeEntries] = await Promise.all([
     loadYTDSummary(),
     loadPendingApprovals(),
-    loadShiftsWithCounts({ from: todayISO(), statuses: ['open'] })
+    loadShiftsWithCounts({ from: todayISO(), statuses: ['open'] }),
+    loadAdminTimeEntries()
   ]);
+  const onClockNow = timeEntries.filter(t => t.status === 'open');
+  const clockPending = timeEntries.filter(t => t.status === 'submitted').length;
   const activeContractors = (ytd||[]).filter(r => r.status === 'active');
   const totalHours = activeContractors.reduce((s,r) => s + Number(r.approved_hours||0), 0);
   const totalPaid  = activeContractors.reduce((s,r) => s + Number(r.paid_amount||0), 0);
@@ -2525,7 +2711,7 @@ async function renderAdminDashboard() {
       </div>
     ` : `
       <div class="panel" style="border-left:4px solid var(--accent);">
-        <div style="font-family:'Playfair Display',serif;font-size:1.15rem;color:var(--brown-dk);">All caught up &mdash; nothing outstanding.</div>
+        <div style="font-family:'Playfair Display',serif;font-size:1.15rem;color:var(--brown-dk);">All caught up, nothing outstanding.</div>
       </div>
     `}
 
@@ -2533,7 +2719,8 @@ async function renderAdminDashboard() {
       <div class="stat-card"><div class="sl">Active contractors</div><div class="sv">${activeContractors.filter(r=>r.first_name).length}</div></div>
       <div class="stat-card"><div class="sl">Hours YTD</div><div class="sv">${totalHours.toFixed(1)}</div><div class="sh">approved</div></div>
       <div class="stat-card"><div class="sl">Paid YTD</div><div class="sv">${fmtCur(totalPaid)}</div><div class="sh">${fmtCur(totalUnpaid)} unpaid</div></div>
-      <div class="stat-card"><div class="sl">Pending approvals</div><div class="sv">${pending.length}</div><div class="sh">${pending.length?'<button class="login-link" onclick="showSection(\'a-approvals\')">Review now</button>':'all clear'}</div></div>
+      <div class="stat-card"><div class="sl">Pending approvals</div><div class="sv">${pending.length + clockPending}</div><div class="sh">${(pending.length + clockPending)?'<button class="login-link" onclick="showSection(\'a-approvals\')">Review now</button>':'all clear'}</div></div>
+      <div class="stat-card"><div class="sl">On the clock</div><div class="sv">${onClockNow.length}</div><div class="sh">${onClockNow.length ? esc(onClockNow.map(t => t.contractor.first_name).join(', ')) : 'nobody clocked in'}</div></div>
       <div class="stat-card"><div class="sl">Open shift spots</div><div class="sv">${openTotal}</div><div class="sh">${openShifts.length} shift${openShifts.length===1?'':'s'} posted</div></div>
       <div class="stat-card"><div class="sl">1099 threshold</div><div class="sv">${over600}</div><div class="sh">${near600} approaching</div></div>
     </div>
@@ -2549,14 +2736,14 @@ async function renderAdminDashboard() {
             const earned = Number(r.earned_amount||0);
             const over = earned >= 600;
             const near = earned >= 500 && earned < 600;
-            const flag = over ? '<span class="badge b-danger">Over $600</span>' : near ? '<span class="badge b-warn">Near $600</span>' : '—';
+            const flag = over ? '<span class="badge b-danger">Over $600</span>' : near ? '<span class="badge b-warn">Near $600</span>' : '-';
             const food = r.food_handler_card_expires
               ? (daysFromToday(r.food_handler_card_expires) < 0
                   ? `<span class="badge b-danger">Expired ${fmtDateShort(r.food_handler_card_expires)}</span>`
                   : (daysFromToday(r.food_handler_card_expires) <= 30
                       ? `<span class="badge b-warn">${fmtDateShort(r.food_handler_card_expires)}</span>`
                       : esc(fmtDateShort(r.food_handler_card_expires))))
-              : '—';
+              : '-';
             const avail = r.availability_last_updated_at
               ? (Date.now() - new Date(r.availability_last_updated_at).getTime() > 30*86400000
                   ? `<span class="badge b-warn">Stale</span>`
@@ -2581,7 +2768,7 @@ async function renderAdminDashboard() {
 }
 
 // ============================================================
-// ADMIN — SHIFTS
+// ADMIN, SHIFTS
 // ============================================================
 async function renderAdminShifts() {
   const el = $('sec-a-shifts');
@@ -2661,14 +2848,14 @@ window.openCreateShiftModal = async function(preDate) {
         <div id="ns-extra-starts"></div>
         <button type="button" id="ns-add-start-btn" class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="addStartTimeRow()">+ Add another start time</button>
         <div id="ns-start-count" class="help" style="margin-top:6px;font-weight:600;">1 of ${dflt.spots_total} start times (one per spot)</div>
-        <div class="help">Stack start times if contractors can start at different times (e.g. 9 AM, 11 AM, 1 PM). Capped at your Spots count &mdash; one start time per spot.</div>
+        <div class="help">Stack start times if contractors can start at different times (e.g. 9 AM, 11 AM, 1 PM). Capped at your Spots count, one start time per spot.</div>
       </div>
     </div>
     <div class="form-row">
       <div class="fg"><label>Location</label><input id="ns-loc" value="${esc(dflt.location)}" /></div>
       <div class="fg"><label>Status</label><select id="ns-status">
         <option value="open">Open (contractors can sign up immediately)</option>
-        <option value="tentative">Tentative (locked — promote to Open when confirmed)</option>
+        <option value="tentative">Tentative (locked, promote to Open when confirmed)</option>
       </select></div>
     </div>
     <div class="form-row">
@@ -2695,7 +2882,7 @@ window.openCreateShiftModal = async function(preDate) {
         });
         closeModal();
         const stat = $('ns-status').value;
-        toast(stat === 'tentative' ? 'Shift saved as tentative (not posted to contractors yet)' : 'Shift posted — contractors notified');
+        toast(stat === 'tentative' ? 'Shift saved as tentative (not posted to contractors yet)' : 'Shift posted, contractors notified');
         refreshActiveSection();
       } catch (e) { toast(e.message || 'Create failed', {error:true}); }
     }}
@@ -2772,7 +2959,7 @@ window.adminCancelShiftPrompt = function(shiftId, dateLabel) {
 };
 
 // ============================================================
-// ADMIN — AVAILABILITY (planning heatmap)
+// ADMIN, AVAILABILITY (planning heatmap)
 // ============================================================
 const _adminAvState = { year: new Date().getFullYear(), month: new Date().getMonth() };
 
@@ -2788,7 +2975,7 @@ async function renderAdminAvailability() {
 
   el.innerHTML = `
     <div class="page-h">Availability</div>
-    <div class="page-sub">Who's free, when — plan bakes around your team</div>
+    <div class="page-sub">Who's free, when, plan bakes around your team</div>
 
     <div class="cal-wrap">
       <div class="cal-header">
@@ -2874,21 +3061,186 @@ window.adminAvailOpenDate = async function(iso) {
 };
 
 // ============================================================
-// ADMIN — APPROVALS
+// ADMIN, APPROVALS
 // ============================================================
 async function renderAdminApprovals() {
   const el = $('sec-a-approvals');
   el.innerHTML = '<div class="page-h">Approvals</div><div class="page-sub">Loading…</div>';
-  const pending = await loadPendingApprovals();
+  const [pending, timeEntries] = await Promise.all([loadPendingApprovals(), loadAdminTimeEntries()]);
+  const onClock = timeEntries.filter(t => t.status === 'open');
+  const submitted = timeEntries.filter(t => t.status === 'submitted');
+  const total = pending.length + submitted.length;
+  clearInterval(_clockTimer);
+  if (onClock.length) {
+    _clockTimer = setInterval(() => {
+      const anyEl = document.querySelector('[data-te-since]');
+      if (!anyEl) { clearInterval(_clockTimer); return; }
+      document.querySelectorAll('[data-te-since]').forEach(e => { e.textContent = fmtElapsed(Date.now() - Number(e.dataset.teSince)); });
+    }, 1000);
+  }
   el.innerHTML = `
     <div class="page-h">Approvals</div>
-    <div class="page-sub">${pending.length} hour submission${pending.length===1?'':'s'} awaiting your review</div>
+    <div class="page-sub">${total} item${total===1?'':'s'} awaiting your review</div>
+
+    <div class="panel clock-panel ${onClock.length ? 'on' : ''}">
+      <div class="panel-title">On the clock right now</div>
+      ${onClock.length === 0 ? `<p style="color:var(--muted);font-size:.92rem;margin:0;">Nobody is clocked in.</p>` : `
+        <div class="te-list">
+          ${onClock.map(t => `
+            <div class="te-item">
+              <span><span class="clock-dot"></span><strong>${esc(t.contractor.first_name||'')} ${esc(t.contractor.last_name||'')}</strong> since ${fmtClockTime(t.clock_in)}${t.shift ? ` · ${esc(t.shift.location)}` : ''}</span>
+              <span style="display:flex;gap:8px;align-items:center;">
+                <span class="te-hrs" data-te-since="${new Date(t.clock_in).getTime()}">${fmtElapsed(Date.now() - new Date(t.clock_in).getTime())}</span>
+                <button class="btn btn-outline btn-sm" onclick="adminClockOut('${t.id}')" title="Clock this person out now">Clock out</button>
+              </span>
+            </div>`).join('')}
+        </div>`}
+    </div>
+
+    <div class="page-h" style="font-size:1.15rem;margin-top:18px;">Time clock entries</div>
+    <div class="page-sub">${submitted.length} clock-out${submitted.length===1?'':'s'} to approve. Adjust the times or hours if needed, then approve. Approval records the hours at the contractor's current pay rate.</div>
+    ${submitted.length === 0
+      ? `<div class="panel"><p style="color:var(--muted);margin:0;">No time clock entries waiting.</p></div>`
+      : `<div class="card-list">${submitted.map(t => timeEntryCardHtml(t)).join('')}</div>`}
+
+    <div class="page-h" style="font-size:1.15rem;margin-top:18px;">Manually submitted hours</div>
+    <div class="page-sub">${pending.length} hour submission${pending.length===1?'':'s'} entered by hand from My Shifts</div>
     ${pending.length === 0
-      ? `<div class="panel"><p style="color:var(--muted);">No pending approvals. Once contractors submit hours for completed shifts they'll appear here.</p></div>`
+      ? `<div class="panel"><p style="color:var(--muted);margin:0;">No pending hour submissions.</p></div>`
       : `<div class="card-list">${pending.map(p => approvalCardHtml(p)).join('')}</div>`
     }
   `;
 }
+
+async function loadAdminTimeEntries() {
+  const { data, error } = await sb.from('c_time_entries')
+    .select('*, shift:c_shifts(bake_date, location, start_time), contractor:c_contractors!contractor_id(first_name, last_name, email, pay_rate)')
+    .in('status', ['open','submitted'])
+    .order('clock_in', { ascending: true });
+  if (error) { toast(error.message, {error:true}); return []; }
+  return data || [];
+}
+
+// datetime-local value in Denver time for a timestamptz
+function toDenverLocalInput(ts) {
+  if (!ts) return '';
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone:'America/Denver', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }).formatToParts(new Date(ts));
+  const g = k => parts.find(p => p.type === k).value;
+  return `${g('year')}-${g('month')}-${g('day')}T${g('hour') === '24' ? '00' : g('hour')}:${g('minute')}`;
+}
+// datetime-local (Denver wall time) back to an ISO instant
+function fromDenverLocalInput(val) {
+  if (!val) return null;
+  const [d, t] = val.split('T'); const [y, m, dd] = d.split('-').map(Number); const [hh, mm] = t.split(':').map(Number);
+  const target = Date.UTC(y, m-1, dd, hh, mm);
+  let guess = target;
+  for (let i = 0; i < 2; i++) {
+    const p = new Intl.DateTimeFormat('en-US', { timeZone:'America/Denver', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }).formatToParts(new Date(guess));
+    const g = k => Number(p.find(x => x.type === k).value);
+    const wall = Date.UTC(g('year'), g('month')-1, g('day'), g('hour') % 24, g('minute'));
+    guess += (target - wall);
+  }
+  return new Date(guess).toISOString();
+}
+
+function timeEntryCardHtml(t) {
+  const hrs = t.worked_hours != null ? Number(t.worked_hours) : 0;
+  const long = hrs > 12;
+  const rate = Number(t.contractor.pay_rate || 0);
+  return `
+    <div class="card" id="te-card-${t.id}">
+      <div class="card-hd">
+        <div>
+          <h3>${esc(t.contractor.first_name||'')} ${esc(t.contractor.last_name||'')}</h3>
+          <div class="card-sub">${esc(fmtDateShort(t.work_date))} · ${fmtClockTime(t.clock_in)} to ${fmtClockTime(t.clock_out)}${t.break_minutes ? ` · ${t.break_minutes} min break` : ''}${t.shift ? ` · 📍 ${esc(t.shift.location)}` : ' · no shift on the schedule that day'}</div>
+        </div>
+        <span class="badge ${long ? 'b-open' : 'b-pending'}">${hrs.toFixed(2)}h${long ? ' (long)' : ''}</span>
+      </div>
+      ${t.notes ? `<div class="card-body" style="font-size:.84rem;margin-bottom:8px;"><em>"${esc(t.notes)}"</em></div>` : ''}
+      ${(t.in_lat || t.out_lat) ? `<div style="font-size:.78rem;color:var(--muted);margin-bottom:8px;">📍 ${t.in_lat ? `<a href="https://maps.google.com/?q=${t.in_lat},${t.in_lng}" target="_blank" rel="noopener">clock-in location</a>` : ''}${t.in_lat && t.out_lat ? ' · ' : ''}${t.out_lat ? `<a href="https://maps.google.com/?q=${t.out_lat},${t.out_lng}" target="_blank" rel="noopener">clock-out location</a>` : ''}</div>` : ''}
+      <div class="te-grid" style="margin-bottom:8px;">
+        <div class="fg"><label>Clock in</label><input id="te-in-${t.id}" type="datetime-local" value="${toDenverLocalInput(t.clock_in)}" onchange="teRecalc('${t.id}')" /></div>
+        <div class="fg"><label>Clock out</label><input id="te-out-${t.id}" type="datetime-local" value="${toDenverLocalInput(t.clock_out)}" onchange="teRecalc('${t.id}')" /></div>
+        <div class="fg"><label>Break (min)</label><input id="te-brk-${t.id}" type="number" min="0" max="480" step="5" value="${t.break_minutes||0}" inputmode="numeric" onchange="teRecalc('${t.id}')" /></div>
+        <div class="fg"><label>Approve hours <span id="te-amt-${t.id}" style="color:var(--muted);font-weight:normal;">(${fmtCur(hrs*rate)} at ${fmtCur(rate)}/hr)</span></label><input id="te-h-${t.id}" type="number" step="0.25" min="0" max="24" value="${hrs.toFixed(2)}" inputmode="decimal" data-rate="${rate}" oninput="teAmt('${t.id}')" /></div>
+      </div>
+      <div class="fg" style="margin-bottom:8px;"><label>Admin note (visible to contractor)</label><input id="te-n-${t.id}" value="" placeholder="optional" /></div>
+      <div class="card-actions">
+        <button class="btn btn-primary btn-sm" onclick="approveTimeEntry('${t.id}')">Approve</button>
+        <button class="btn btn-outline btn-sm" onclick="rejectTimeEntryPrompt('${t.id}')">Reject</button>
+      </div>
+    </div>
+  `;
+}
+
+window.teRecalc = function(id) {
+  const i = fromDenverLocalInput($('te-in-'+id).value), o = fromDenverLocalInput($('te-out-'+id).value);
+  const brk = Number($('te-brk-'+id).value || 0);
+  if (!i || !o) return;
+  const h = Math.max(0, (new Date(o) - new Date(i)) / 3600000 - brk/60);
+  $('te-h-'+id).value = h.toFixed(2);
+  teAmt(id);
+};
+window.teAmt = function(id) {
+  const inp = $('te-h-'+id); const rate = Number(inp.dataset.rate||0);
+  $('te-amt-'+id).textContent = `(${fmtCur(Number(inp.value||0)*rate)} at ${fmtCur(rate)}/hr)`;
+};
+
+window.approveTimeEntry = async function(id) {
+  const h = $('te-h-'+id).value;
+  if (h === '' || Number(h) < 0) { toast('Enter hours', {error:true}); return; }
+  const pIn = fromDenverLocalInput($('te-in-'+id).value), pOut = fromDenverLocalInput($('te-out-'+id).value);
+  if (pIn && pOut && new Date(pOut) <= new Date(pIn)) { toast('Clock-out must be after clock-in', {error:true}); return; }
+  try {
+    const { data: subId, error } = await sb.rpc('c_time_entry_approve', {
+      p_entry_id: id, p_approved_hours: Number(h), p_admin_notes: $('te-n-'+id).value || '',
+      p_clock_in: pIn, p_clock_out: pOut, p_break_minutes: Number($('te-brk-'+id).value || 0)
+    });
+    if (error) throw error;
+    toast('Approved');
+    // email the contractor using the regular hours-approved template
+    const { data: sub } = await sb.from('c_hour_submissions')
+      .select('*, shift:c_shifts(*), contractor:c_contractors!contractor_id(*)').eq('id', subId).single();
+    if (sub && sub.contractor && sub.contractor.email && !/@pending\.lfb$/i.test(sub.contractor.email)) {
+      const ytd = await loadYTDSummary();
+      const myRow = (ytd||[]).find(r => r.contractor_id === sub.contractor_id) || {};
+      notify('hours_approved', {
+        to_email: sub.contractor.email, first_name: sub.contractor.first_name,
+        bake_date: fmtDate(sub.shift.bake_date), approved_hours: String(sub.approved_hours),
+        pay_rate: fmtCur(sub.approved_pay_rate), approved_amount: fmtCur(sub.approved_amount),
+        admin_notes_line: sub.admin_notes ? `Note from admin: ${sub.admin_notes}` : '',
+        ytd_hours: String(myRow.approved_hours||0), ytd_paid: fmtCur(myRow.paid_amount||0), ytd_pending: fmtCur(myRow.unpaid_amount||0),
+        portal_url: PORTAL_URL
+      });
+    }
+    refreshActiveSection();
+  } catch (e) { toast(e.message || 'Approval failed', {error:true}); }
+};
+
+window.rejectTimeEntryPrompt = function(id) {
+  openModal('Reject time entry', `
+    <p style="font-size:.9rem;color:var(--muted);margin-top:0;">The contractor will see this entry as "Not approved" with your note. No hours or pay are recorded.</p>
+    <div class="fg"><label>Reason (shown to contractor)</label><input id="te-rej-note" placeholder="e.g. duplicate of the hours you submitted by hand" /></div>
+  `, [
+    { label:'Cancel' },
+    { label:'Reject entry', cls:'btn-danger', onClick: async () => {
+        try {
+          const { error } = await sb.rpc('c_time_entry_reject', { p_entry_id: id, p_admin_notes: v('te-rej-note') });
+          if (error) throw error;
+          closeModal(); toast('Entry rejected'); refreshActiveSection();
+        } catch (e) { toast(e.message || 'Failed', {error:true}); }
+      } }
+  ]);
+};
+
+window.adminClockOut = async function(id) {
+  try {
+    const { error } = await sb.rpc('c_clock_out', { p_entry_id: id, p_notes: 'Clocked out by admin', p_break_minutes: 0, p_lat: null, p_lng: null });
+    if (error) throw error;
+    toast('Clocked out; entry is now waiting for approval');
+    refreshActiveSection();
+  } catch (e) { toast(e.message || 'Failed', {error:true}); }
+};
 
 function approvalCardHtml(p) {
   return `
@@ -2924,7 +3276,7 @@ window.approveSubmission = async function(id) {
 };
 
 // ============================================================
-// ADMIN — PAYMENTS
+// ADMIN, PAYMENTS
 // ============================================================
 async function renderAdminPayments() {
   const el = $('sec-a-payments');
@@ -2934,7 +3286,7 @@ async function renderAdminPayments() {
 
   el.innerHTML = `
     <div class="page-h">Payments</div>
-    <div class="page-sub">Per-contractor — record payments against approved hours</div>
+    <div class="page-sub">Per-contractor, record payments against approved hours</div>
 
     <div class="panel">
       <div class="panel-title">Outstanding (${rows.length})</div>
@@ -2959,7 +3311,7 @@ async function renderAdminPayments() {
     </div>
 
     <div class="panel">
-      <div class="panel-title">All payments — most recent first</div>
+      <div class="panel-title">All payments, most recent first</div>
       <div id="payment-history">${await renderPaymentHistoryAll()}</div>
     </div>
   `;
@@ -2984,7 +3336,7 @@ async function renderPaymentHistoryAll() {
               <td><a href="#" onclick="event.preventDefault();openContractorHistory('${p.contractor?.id||''}')" style="color:var(--accent-dk);text-decoration:none;font-weight:600;">${esc(p.contractor?.first_name||'')} ${esc(p.contractor?.last_name||'')}</a></td>
               <td><strong>${fmtCur(p.amount)}</strong></td>
               <td>${esc(p.method)}</td>
-              <td>${esc(p.reference||'—')}</td>
+              <td>${esc(p.reference||'-')}</td>
               <td style="font-size:.78rem;color:var(--muted);">${esc((p.notes||'').replace(/^BACKFILL:\s*/,''))}</td>
             </tr>
           `).join('')}
@@ -3052,7 +3404,7 @@ window.openPayContractor = async function(contractorId, name) {
 };
 
 // ============================================================
-// ADMIN — CONTRACTORS
+// ADMIN, CONTRACTORS
 // ============================================================
 async function renderAdminContractors() {
   const el = $('sec-a-contractors');
@@ -3075,11 +3427,11 @@ async function renderAdminContractors() {
           ${all.map(c => `
             <tr>
               <td><strong>${esc(c.first_name||'')} ${esc(c.last_name||'')}</strong><div style="font-size:.74rem;color:var(--muted);">${esc(c.email)}</div></td>
-              <td><code style="font-family:ui-monospace,Menlo,monospace;background:var(--cream-lt);padding:2px 8px;border-radius:3px;font-size:.86rem;letter-spacing:.05em;">${esc(c.pin||'—')}</code></td>
+              <td><code style="font-family:ui-monospace,Menlo,monospace;background:var(--cream-lt);padding:2px 8px;border-radius:3px;font-size:.86rem;letter-spacing:.05em;">${esc(c.pin||'-')}</code></td>
               <td><span class="badge ${c.role==='admin'?'b-paid':'b-inactive'}">${esc(c.role)}</span></td>
               <td><span class="badge ${c.status==='active'?'b-active':'b-inactive'}">${esc(c.status)}</span></td>
               <td>${fmtCur(c.pay_rate||0)}</td>
-              <td>${esc(c.phone||'—')}</td>
+              <td>${esc(c.phone||'-')}</td>
               <td>
                 <button class="btn btn-outline btn-sm" onclick="openContractorHistory('${c.id}')">History</button>
                 <button class="btn btn-outline btn-sm" onclick="openEditContractorModal('${c.id}')">Edit</button>
@@ -3180,7 +3532,7 @@ window.openEditContractorModal = async function(id) {
     <div class="panel" style="background:var(--cream-lt);padding:12px;margin-top:8px;border-left:3px solid var(--accent);">
       <div style="font-weight:700;color:var(--brown-dk);font-size:.82rem;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Login PIN</div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <code id="ec-pin-display" style="font-size:1.4rem;font-family:ui-monospace,Menlo,monospace;background:var(--white);padding:4px 12px;border:1px solid var(--tan);border-radius:4px;color:var(--brown-dk);letter-spacing:.1em;">${esc(c.pin||'(none — click Generate)')}</code>
+        <code id="ec-pin-display" style="font-size:1.4rem;font-family:ui-monospace,Menlo,monospace;background:var(--white);padding:4px 12px;border:1px solid var(--tan);border-radius:4px;color:var(--brown-dk);letter-spacing:.1em;">${esc(c.pin||'(none, click Generate)')}</code>
         <button class="btn btn-outline btn-sm" onclick="generateNewPin('${c.id}')">Generate new PIN</button>
         <button class="btn btn-outline btn-sm" onclick="copyPin()">Copy</button>
       </div>
@@ -3202,7 +3554,7 @@ window.openEditContractorModal = async function(id) {
       try {
         const { error } = await sb.auth.signUp({ email: c.email, password: pin });
         if (error) throw error;
-        toast('Login activated — contractor can sign in now');
+        toast('Login activated, contractor can sign in now');
         refreshActiveSection();
       } catch (e) { toast(e.message || 'Activation failed', {error:true}); }
     }}] : []),
@@ -3230,7 +3582,7 @@ window.generateNewPin = async function(contractorId) {
     const { data, error } = await sb.rpc('c_regenerate_contractor_pin', { p_contractor_id: contractorId });
     if (error) throw error;
     document.getElementById('ec-pin-display').textContent = data;
-    toast('New PIN generated — share with contractor');
+    toast('New PIN generated, share with contractor');
   } catch (e) { toast(e.message || 'Failed', {error:true}); }
 };
 
@@ -3239,11 +3591,11 @@ window.copyPin = async function() {
   try {
     await navigator.clipboard.writeText(pin);
     toast('PIN copied to clipboard');
-  } catch (e) { toast('Copy failed — select manually', {error:true}); }
+  } catch (e) { toast('Copy failed, select manually', {error:true}); }
 };
 
 // ============================================================
-// ADMIN — AUDIT LOG
+// ADMIN, AUDIT LOG
 // ============================================================
 async function renderAdminAudit() {
   const el = $('sec-a-audit');
@@ -3314,7 +3666,7 @@ function fmtLongDate(iso) {
   return d.toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
 }
 function fmtStamp(ts) {
-  if (!ts) return '—';
+  if (!ts) return '-';
   return new Date(ts).toLocaleString('en-US', { timeZone:'America/Denver', year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', timeZoneName:'short' });
 }
 async function sha256Hex(text) {
@@ -3398,10 +3750,10 @@ async function buildContractPdf(contract, events) {
   doc.addPage(); y = M;
   para('ELECTRONIC SIGNATURE CERTIFICATE', { size:13, style:'bold', gap:4, align:'center' });
   para('Audit trail generated by the Lazar Family Bakehouse Contractor Portal (contractors.lazarfamilybakehouse.com)', { size:9, gap:16, align:'center' });
-  const kv = (k, v) => { need(16); doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.text(k, M, y); doc.setFont('helvetica','normal'); const lines = doc.splitTextToSize(String(v||'—'), maxW - 150); doc.text(lines, M + 150, y); y += 13 * lines.length; };
+  const kv = (k, v) => { need(16); doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.text(k, M, y); doc.setFont('helvetica','normal'); const lines = doc.splitTextToSize(String(v||'-'), maxW - 150); doc.text(lines, M + 150, y); y += 13 * lines.length; };
   kv('Document ID', contract.id);
   kv('Document title', contract.title);
-  kv('Template version', contract.template_version != null ? `v${contract.template_version}` : '—');
+  kv('Template version', contract.template_version != null ? `v${contract.template_version}` : '-');
   kv('Document SHA-256', contract.body_sha256);
   kv('Sent to signer', `${contract.signer_email || ''} on ${fmtStamp(contract.sent_at)}`);
   kv('First viewed', fmtStamp(contract.first_viewed_at));
@@ -3621,7 +3973,7 @@ async function renderAdminContracts() {
                 ${r.status==='viewed' && r.first_viewed_at ? `<div style="font-size:.72rem;color:var(--muted);">viewed ${esc(fmtStamp(r.first_viewed_at))}</div>` : ''}
                 ${r.status==='declined' && r.decline_reason ? `<div style="font-size:.72rem;color:var(--muted);">${esc(r.decline_reason)}</div>` : ''}</td>
             <td style="font-size:.8rem;">${esc(fmtStamp(r.sent_at))}</td>
-            <td style="font-size:.8rem;">${r.signed_at ? esc(fmtStamp(r.signed_at)) : '—'}</td>
+            <td style="font-size:.8rem;">${r.signed_at ? esc(fmtStamp(r.signed_at)) : '-'}</td>
             <td style="white-space:nowrap;">
               <button class="btn btn-outline btn-sm" onclick="openContractAudit('${r.id}')">Details</button>
               ${r.status==='signed' ? (r.pdf_path ? `<button class="btn btn-outline btn-sm" onclick="openContractPdf('${esc(r.pdf_path)}')">PDF</button>` : `<button class="btn btn-outline btn-sm" onclick="regenContractPdf('${r.id}')">Make PDF</button>`) : ''}
@@ -3651,7 +4003,7 @@ window.openSendContractModal = async function(contractorId) {
   };
   openModal('Send a contract for signature', `
     <div class="form-row">
-      <div class="fg"><label>Contractor</label><select id="sc-contractor">${who.map(c => `<option value="${c.id}" ${c.id===pick?'selected':''}>${esc(c.first_name)} ${esc(c.last_name)} — ${esc(c.email)}</option>`).join('')}</select></div>
+      <div class="fg"><label>Contractor</label><select id="sc-contractor">${who.map(c => `<option value="${c.id}" ${c.id===pick?'selected':''}>${esc(c.first_name)} ${esc(c.last_name)}, ${esc(c.email)}</option>`).join('')}</select></div>
       <div class="fg"><label>Template</label><select id="sc-template">${tpls.map(t => `<option value="${t.id}">${esc(t.name)} (v${t.version})</option>`).join('')}</select></div>
     </div>
     <div class="form-row">
@@ -3709,7 +4061,7 @@ window.openUploadSignedContractModal = async function(contractorId) {
   openModal('Upload a signed contract', `
     <p style="font-size:.86rem;color:var(--muted);margin:0 0 10px;">For agreements that were already signed outside the portal (emailed PDF, paper). The file is stored in the contractor's private documents and shows as <strong>Signed</strong> in the Contracts list.</p>
     <div class="form-row">
-      <div class="fg"><label>Contractor</label><select id="uc-contractor">${who.map(c => `<option value="${c.id}" ${c.id===contractorId?'selected':''}>${esc(c.first_name)} ${esc(c.last_name)} — ${esc(c.email)}</option>`).join('')}</select></div>
+      <div class="fg"><label>Contractor</label><select id="uc-contractor">${who.map(c => `<option value="${c.id}" ${c.id===contractorId?'selected':''}>${esc(c.first_name)} ${esc(c.last_name)}, ${esc(c.email)}</option>`).join('')}</select></div>
       <div class="fg"><label>Date signed</label><input id="uc-date" type="date" value="${todayISO()}" /></div>
     </div>
     <div class="form-row">
@@ -3820,7 +4172,7 @@ window.openBulkImportContractsModal = async function() {
     $('bi-table').innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>File</th><th>Contractor</th><th>Agreement</th><th>Date signed</th></tr></thead><tbody>
       ${files.map((f, i) => { const g = guess(f.name); return `<tr>
         <td style="font-size:.8rem;">${esc(f.name)}<div style="color:var(--muted);font-size:.72rem;">${(f.size/1024).toFixed(0)} KB</div></td>
-        <td><select id="bi-c-${i}" style="font-size:.84rem;"><option value="">— pick —</option>${who.map(p => `<option value="${p.id}" ${p.id===g.contractorId?'selected':''}>${esc(p.first_name)} ${esc(p.last_name)}</option>`).join('')}</select>${g.contractorId ? '' : '<div style="color:var(--danger);font-size:.72rem;">No match: add them under Contractors first, or pick manually</div>'}</td>
+        <td><select id="bi-c-${i}" style="font-size:.84rem;"><option value="">pick one</option>${who.map(p => `<option value="${p.id}" ${p.id===g.contractorId?'selected':''}>${esc(p.first_name)} ${esc(p.last_name)}</option>`).join('')}</select>${g.contractorId ? '' : '<div style="color:var(--danger);font-size:.72rem;">No match: add them under Contractors first, or pick manually</div>'}</td>
         <td><input id="bi-t-${i}" value="${esc(g.title)}" style="font-size:.84rem;min-width:170px;" /></td>
         <td><input id="bi-d-${i}" type="date" value="${g.date}" style="font-size:.84rem;" /></td>
       </tr>`; }).join('')}
@@ -3846,7 +4198,7 @@ window.openContractAudit = async function(id) {
   ]);
   if (error) { toast(error.message, {error:true}); return; }
   const kv = (k, val) => `<tr><td style="font-weight:700;white-space:nowrap;font-size:.8rem;">${esc(k)}</td><td style="font-size:.8rem;word-break:break-all;">${val}</td></tr>`;
-  openModal(`${c.title} — ${c.contractor?.first_name||''} ${c.contractor?.last_name||''}`, `
+  openModal(`${c.title}, ${c.contractor?.first_name||''} ${c.contractor?.last_name||''}`, `
     <div class="tbl-wrap"><table><tbody>
       ${kv('Status', `<span class="badge ${CONTRACT_STATUS_BADGE[c.status]}">${esc(CONTRACT_STATUS_LABEL[c.status]||c.status)}</span>`)}
       ${kv('Document ID', esc(c.id))}
@@ -3854,9 +4206,9 @@ window.openContractAudit = async function(id) {
       ${kv('Sent', esc(fmtStamp(c.sent_at)))}
       ${kv('First viewed', esc(fmtStamp(c.first_viewed_at)))}
       ${kv('Signed', esc(fmtStamp(c.signed_at)))}
-      ${kv('Typed name', esc(c.signer_typed_name||'—'))}
-      ${kv('Signer IP', esc(c.signer_ip||'—'))}
-      ${kv('Signer device', esc(c.signer_user_agent||'—'))}
+      ${kv('Typed name', esc(c.signer_typed_name||'-'))}
+      ${kv('Signer IP', esc(c.signer_ip||'-'))}
+      ${kv('Signer device', esc(c.signer_user_agent||'-'))}
       ${kv('Company signer', `${esc(c.company_signer_name)}, ${esc(c.company_signer_title)} · ${esc(fmtStamp(c.company_signed_at))}`)}
       ${kv('Merge values', `<code style="font-size:.74rem;">${esc(JSON.stringify(c.merge_values))}</code>`)}
     </tbody></table></div>
@@ -3885,7 +4237,7 @@ window.openTemplateManager = async function(editId) {
     <label style="display:flex;gap:8px;align-items:center;font-size:.86rem;margin-top:8px;"><input type="checkbox" id="tp-active" ${cur.is_active?'checked':''}/> Active (available when sending)</label>
   ` : `
     <div class="tbl-wrap"><table><thead><tr><th>Template</th><th>Version</th><th>Active</th><th></th></tr></thead><tbody>
-      ${tpls.map(t => `<tr><td>${esc(t.name)}</td><td>v${t.version}</td><td>${t.is_active?'✓':'—'}</td><td><button class="btn btn-outline btn-sm" onclick="openTemplateManager('${t.id}')">Edit</button></td></tr>`).join('') || '<tr><td class="empty-row" colspan="4">No templates</td></tr>'}
+      ${tpls.map(t => `<tr><td>${esc(t.name)}</td><td>v${t.version}</td><td>${t.is_active?'✓':'-'}</td><td><button class="btn btn-outline btn-sm" onclick="openTemplateManager('${t.id}')">Edit</button></td></tr>`).join('') || '<tr><td class="empty-row" colspan="4">No templates</td></tr>'}
     </tbody></table></div>`, cur ? [
     { label:'Back', cls:'btn-outline', onClick: () => openTemplateManager() },
     { label:'Save', cls:'btn-primary', onClick: async () => {
@@ -3905,7 +4257,7 @@ window.openTemplateManager = async function(editId) {
 };
 
 // ============================================================
-// ADMIN — KITCHEN RENT
+// ADMIN, KITCHEN RENT
 // Tracks rent income from outside kitchen users (manual entry).
 // ============================================================
 async function renderAdminKitchenRent() {
@@ -3991,7 +4343,7 @@ async function renderAdminKitchenRent() {
                   <td>${fmtCur(r.amount_paid||0)}</td>
                   <td><strong>${fmtCur(balance)}</strong></td>
                   <td><span class="badge ${badgeCls}">${esc(r.status)}</span></td>
-                  <td>${r.paid_on ? esc(fmtDateShort(r.paid_on)) : '—'}</td>
+                  <td>${r.paid_on ? esc(fmtDateShort(r.paid_on)) : '-'}</td>
                   <td>
                     ${r.status !== 'paid' && r.status !== 'cancelled'
                       ? `<button class="btn btn-primary btn-sm" onclick="openKitchenRentPay('${r.id}')">Mark paid</button>` : ''}
@@ -4009,7 +4361,7 @@ async function renderAdminKitchenRent() {
 }
 
 // ============================================================
-// ADMIN — KENT DENVER KITCHEN HOURS (what LFB pays Kent, $10/hr)
+// ADMIN, KENT DENVER KITCHEN HOURS (what LFB pays Kent, $10/hr)
 // ============================================================
 async function renderKentKitchenPanel() {
   const { data: rows, error } = await sb.from('c_kitchen_hours').select('*').order('use_date', { ascending:false });
@@ -4055,7 +4407,7 @@ async function renderKentKitchenPanel() {
           <thead><tr><th>Date</th><th>Hours</th><th>Rate</th><th>Total</th><th>Batch</th><th>Paid</th><th></th></tr></thead>
           <tbody>${all.map(r => `<tr>
             <td style="white-space:nowrap;">${esc(fmtDateShort(r.use_date))}</td><td>${Number(r.hours).toFixed(2)}</td><td>${fmtCur(r.rate)}</td><td>${fmtCur(r.total)}</td>
-            <td>${esc(r.batch||'—')}</td><td>${r.paid ? `<span class="badge b-paid">paid${r.paid_on ? ' '+esc(fmtDateShort(r.paid_on)) : ''}</span>` : '<span class="badge b-pending">open</span>'}</td>
+            <td>${esc(r.batch||'-')}</td><td>${r.paid ? `<span class="badge b-paid">paid${r.paid_on ? ' '+esc(fmtDateShort(r.paid_on)) : ''}</span>` : '<span class="badge b-pending">open</span>'}</td>
             <td style="white-space:nowrap;"><button class="btn btn-outline btn-sm" onclick="openKitchenHoursModal('${r.id}')">Edit</button> <button class="btn btn-outline btn-sm" onclick="deleteKitchenHours('${r.id}')">Delete</button></td>
           </tr>`).join('')}</tbody>
         </table></div>
@@ -4139,7 +4491,7 @@ window.openKitchenRentModal = async function(id) {
     <div class="form-row">
       <div class="fg"><label>Method</label><select id="kr-method">
         ${['','check','venmo','zelle','cash','wire','other']
-          .map(m => `<option value="${m}" ${row?.method===m?'selected':''}>${m||'—'}</option>`).join('')}
+          .map(m => `<option value="${m}" ${row?.method===m?'selected':''}>${m||'-'}</option>`).join('')}
       </select></div>
       <div class="fg"><label>Reference (check #, txn id)</label><input id="kr-ref" value="${esc(row?.reference||'')}" /></div>
     </div>
@@ -4182,7 +4534,7 @@ window.openKitchenRentPay = async function(id) {
   const { data: row, error } = await sb.from('c_kitchen_rent').select('*').eq('id', id).single();
   if (error) { toast(error.message, {error:true}); return; }
   const balance = Math.max(0, Number(row.amount_due||0) - Number(row.amount_paid||0));
-  openModal(`Mark paid — ${row.payer_name}`, `
+  openModal(`Mark paid, ${row.payer_name}`, `
     <p style="font-size:.86rem;color:var(--muted);margin-bottom:10px;">Outstanding: <strong>${fmtCur(balance)}</strong></p>
     <div class="form-row">
       <div class="fg"><label>Amount received</label><input id="krp-amt" type="number" step="0.01" min="0" value="${balance.toFixed(2)}" inputmode="decimal" /></div>
@@ -4234,7 +4586,7 @@ window.deleteKitchenRent = async function(id) {
 };
 
 // ============================================================
-// ADMIN — SETTINGS
+// ADMIN, SETTINGS
 // ============================================================
 async function renderAdminSettings() {
   const el = $('sec-a-settings');
@@ -4283,7 +4635,7 @@ async function renderAdminSettings() {
       <div class="form-actions">
         <button class="btn btn-outline" onclick="runCompletePastShifts()">Mark past shifts as completed</button>
       </div>
-      <p style="font-size:.78rem;color:var(--muted);margin-top:6px;">Run this occasionally — it sets any open shifts whose dates have passed to status=completed.</p>
+      <p style="font-size:.78rem;color:var(--muted);margin-top:6px;">Run this occasionally, it sets any open shifts whose dates have passed to status=completed.</p>
     </div>
   `;
 }
@@ -4321,7 +4673,7 @@ window.runCompletePastShifts = async function() {
 
 
 // ============================================================
-// CONTRACTOR — GUIDE (onboarding / what's where)
+// CONTRACTOR, GUIDE (onboarding / what's where)
 // ============================================================
 async function renderContractorGuide() {
   const el = $('sec-c-guide');
@@ -4335,30 +4687,30 @@ async function renderContractorGuide() {
       <p style="font-size:.95rem;line-height:1.6;color:var(--brown-dk);">
         This is your home base for working with Lazar Family Bakehouse. You can see upcoming bake shifts,
         sign up for ones that work for you, mark your availability, submit hours after each shift, and
-        track your payments &mdash; all in one place.
+        track your payments, all in one place.
       </p>
     </div>
 
     <div class="panel">
       <div class="panel-title">The tabs at the top</div>
       <ul style="list-style:none;padding:0;margin:0;font-size:.92rem;line-height:1.8;">
-        <li><strong>🏠 Home</strong> &mdash; your dashboard. Next shift, YTD totals, profile reminders.</li>
-        <li><strong>📅 Schedule</strong> &mdash; upcoming bake shifts. Tap to sign up for any with open spots.</li>
-        <li><strong>📋 My Shifts</strong> &mdash; shifts you've signed up for, plus the form to submit hours after each bake.</li>
-        <li><strong>🗓️ Availability</strong> &mdash; tap any future day to mark yourself as Free / Busy / Tentative. The more dates you fill, the better we can plan around you.</li>
-        <li><strong>💵 Payments</strong> &mdash; what's been paid, what's pending, and your full payment history.</li>
-        <li><strong>🤝 Referrals</strong> &mdash; know someone who'd be a good baker? Submit their info here.</li>
-        <li><strong>👤 Profile</strong> &mdash; your contact info, emergency contact, food handler card, and documents (W-9, etc).</li>
+        <li><strong>🏠 Home</strong>: your dashboard. The <strong>Time clock</strong> lives here: tap <em>Clock in</em> when you start work and <em>Clock out</em> when you finish. Your hours go to the admin for approval, then show up in Payments. Also: next shift, YTD totals, profile reminders.</li>
+        <li><strong>📅 Schedule</strong>: upcoming bake shifts. Tap to sign up for any with open spots.</li>
+        <li><strong>📋 My Shifts</strong>: shifts you've signed up for, plus the form to submit hours after each bake.</li>
+        <li><strong>🗓️ Availability</strong>: tap any future day to mark yourself as Free / Busy / Tentative. The more dates you fill, the better we can plan around you.</li>
+        <li><strong>💵 Payments</strong>: what's been paid, what's pending, and your full payment history.</li>
+        <li><strong>🤝 Referrals</strong>: know someone who'd be a good baker? Submit their info here.</li>
+        <li><strong>👤 Profile</strong>: your contact info, emergency contact, food handler card, and documents (W-9, etc).</li>
       </ul>
     </div>
 
     <div class="panel">
       <div class="panel-title">Typical workflow</div>
       <ol style="padding-left:20px;font-size:.92rem;line-height:1.8;color:var(--brown-dk);">
-        <li>Check <strong>Availability</strong> &mdash; mark which weekends/weekdays you can work for the next few months.</li>
+        <li>Check <strong>Availability</strong>: mark which weekends/weekdays you can work for the next few months.</li>
         <li>Watch <strong>Schedule</strong> for new shifts. When one shows up that you're free for, click <em>Sign up</em>.</li>
         <li>Show up and bake.</li>
-        <li>Come back the same day, open <strong>My Shifts</strong>, click <em>Submit hours</em> on the shift you just worked. Admin reviews and approves.</li>
+        <li>Use the <strong>Time clock</strong> on Home: clock in when you start, clock out when you finish (add any unpaid break). Forgot to clock in? Open <strong>My Shifts</strong> and <em>Submit hours</em> by hand instead, but do one or the other, not both. Admin reviews and approves.</li>
         <li>Check <strong>Payments</strong> to see your YTD totals and when each payment lands.</li>
       </ol>
     </div>
@@ -4367,7 +4719,7 @@ async function renderContractorGuide() {
       <div class="panel-title">Need to bow out of a shift you signed up for?</div>
       <p style="font-size:.92rem;line-height:1.6;">
         Go to <strong>My Shifts</strong>, find the upcoming shift, click <em>Release spot</em>. Other contractors
-        get notified that the spot opened up. Please release as early as you know &mdash; the more lead time, the
+        get notified that the spot opened up. Please release as early as you know, the more lead time, the
         easier to find someone to fill in.
       </p>
     </div>
@@ -4380,7 +4732,7 @@ async function renderContractorGuide() {
 }
 
 // ============================================================
-// CONTRACTOR — REFERRALS
+// CONTRACTOR, REFERRALS
 // ============================================================
 async function renderContractorReferrals() {
   const el = $('sec-c-referrals');
@@ -4447,13 +4799,13 @@ window.submitReferral = async function() {
       comments
     });
     if (error) throw error;
-    toast('Referral submitted — admin will reach out');
+    toast('Referral submitted, admin will reach out');
     refreshActiveSection();
   } catch (e) { toast(e.message || 'Submit failed', {error:true}); }
 };
 
 // ============================================================
-// ADMIN — REFERRALS
+// ADMIN, REFERRALS
 // ============================================================
 async function renderAdminReferrals() {
   const el = $('sec-a-referrals');
@@ -4542,7 +4894,7 @@ window.addReferralNote = function(id) {
 };
 
 // ============================================================
-// ADMIN — PER-CONTRACTOR HISTORY MODAL
+// ADMIN, PER-CONTRACTOR HISTORY MODAL
 // ============================================================
 window.openContractorHistory = async function(contractorId) {
   openModal('Loading history...', '<p style="color:var(--muted);">Fetching...</p>', [
@@ -4581,7 +4933,7 @@ window.openContractorHistory = async function(contractorId) {
   });
   timeline.sort((a,b) => (b.sortKey||'').localeCompare(a.sortKey||''));
 
-  openModal(`${contractor.first_name||''} ${contractor.last_name||''} — Full history`, `
+  openModal(`${contractor.first_name||''} ${contractor.last_name||''}, Full history`, `
     <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">
       <div class="stat-card" style="border-top-color:var(--accent);"><div class="sl">Total hours</div><div class="sv">${totalHours.toFixed(1)}</div></div>
       <div class="stat-card" style="border-top-color:var(--accent);"><div class="sl">Total earned</div><div class="sv">${fmtCur(totalEarned)}</div></div>
@@ -4640,7 +4992,7 @@ window.addStartTimeRow = function() {
   const container = document.getElementById('ns-extra-starts');
   if (!container) return;
   if (currentStartCount() >= startTimesCap()) {
-    toast(`You have ${startTimesCap()} spot${startTimesCap()===1?'':'s'} — that's the max number of stacked start times. Increase Spots to add more.`, {error:true});
+    toast(`You have ${startTimesCap()} spot${startTimesCap()===1?'':'s'}, that's the max number of stacked start times. Increase Spots to add more.`, {error:true});
     return;
   }
   const row = document.createElement('div');
@@ -4708,14 +5060,14 @@ window.adminPromoteShift = async function(shiftId) {
       shift_notes:shift.notes || '(none)',
       portal_url: PORTAL_URL
     }));
-    toast('Shift promoted to open — contractors notified');
+    toast('Shift promoted to open, contractors notified');
     refreshActiveSection();
   } catch (e) { toast(e.message || 'Failed', {error:true}); }
 };
 
 
 // ============================================================
-// ADMIN — GUIDE (orientation for admin)
+// ADMIN, GUIDE (orientation for admin)
 // ============================================================
 async function renderAdminGuide() {
   const el = $('sec-a-guide');
@@ -4733,15 +5085,15 @@ async function renderAdminGuide() {
     <div class="panel">
       <div class="panel-title">Your tabs</div>
       <ul style="list-style:none;padding:0;margin:0;font-size:.92rem;line-height:1.8;">
-        <li><strong>📊 Dashboard</strong> &mdash; outstanding to pay (front and center), YTD totals, per-contractor table with 1099 flags and food-card expirations.</li>
-        <li><strong>🧑‍🍳 Shifts</strong> &mdash; create new bake shifts. Supports multiple start times (9 / 11 / 1) and tentative status for unconfirmed bakes. Past shifts shown for reference.</li>
-        <li><strong>📅 Availability</strong> &mdash; calendar heatmap. Tap any day to see which contractors are free / busy / tentative, and post a shift directly from that date.</li>
-        <li><strong>✅ Approvals</strong> &mdash; contractors submit hours after each shift; approve (and edit) here. Approved hours snapshot the pay rate at that moment, so future rate changes don't rewrite history.</li>
-        <li><strong>💵 Payments</strong> &mdash; per contractor, see what they're owed and record payment (check / Venmo / Zelle / cash). Click "Pay" &rarr; check the hour records this payment covers &rarr; enter amount and method.</li>
-        <li><strong>🏠 Kitchen</strong> &mdash; two things: the hours we use the Kent Denver kitchen (logged per bake at $10/hr, with what is still owed to Kent and a "Mark month paid" button), and below it the rent we collect from outside kitchen users.</li>
-        <li><strong>👥 Contractors</strong> &mdash; add / edit / deactivate. Each row has a "History" button (full hours + payments timeline) and "Edit" (profile + PIN management). Use "Generate new PIN" to rotate; share PIN with contractor out of band.</li>
-        <li><strong>🤝 Referrals</strong> &mdash; contractors can refer friends. They show up here as "new" &mdash; update status as you process each one.</li>
-        <li><strong>⚙️ Settings</strong> &mdash; defaults for new shifts (location, start/end times), EmailJS configuration status, maintenance tools.</li>
+        <li><strong>📊 Dashboard</strong>: outstanding to pay (front and center), YTD totals, per-contractor table with 1099 flags and food-card expirations.</li>
+        <li><strong>🧑‍🍳 Shifts</strong>: create new bake shifts. Supports multiple start times (9 / 11 / 1) and tentative status for unconfirmed bakes. Past shifts shown for reference.</li>
+        <li><strong>📅 Availability</strong>: calendar heatmap. Tap any day to see which contractors are free / busy / tentative, and post a shift directly from that date.</li>
+        <li><strong>✅ Approvals</strong>: two kinds of items land here. <strong>Time clock entries</strong> (contractor clocked in and out from Home; you see the in/out times, any break, and the location if their phone shared it) and <strong>manually submitted hours</strong> (entered from My Shifts). Adjust the times or hours if needed, then approve, or reject with a note. You can also see who is on the clock right now and clock someone out if they forgot. Approved hours snapshot the pay rate at that moment, so future rate changes don't rewrite history. If there was no shift on the schedule that day, approving a time clock entry creates one automatically so Payments and YTD stay accurate.</li>
+        <li><strong>💵 Payments</strong>: per contractor, see what they're owed and record payment (check / Venmo / Zelle / cash). Click "Pay" &rarr; check the hour records this payment covers &rarr; enter amount and method.</li>
+        <li><strong>🏠 Kitchen</strong>: two things: the hours we use the Kent Denver kitchen (logged per bake at $10/hr, with what is still owed to Kent and a "Mark month paid" button), and below it the rent we collect from outside kitchen users.</li>
+        <li><strong>👥 Contractors</strong>: add / edit / deactivate. Each row has a "History" button (full hours + payments timeline) and "Edit" (profile + PIN management). Use "Generate new PIN" to rotate; share PIN with contractor out of band.</li>
+        <li><strong>🤝 Referrals</strong>: contractors can refer friends. They show up here as "new", update status as you process each one.</li>
+        <li><strong>⚙️ Settings</strong>: defaults for new shifts (location, start/end times), EmailJS configuration status, maintenance tools.</li>
       </ul>
     </div>
 
