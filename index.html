@@ -4015,20 +4015,20 @@ async function buildContractPdf(contract, events) {
     y += gap;
   };
 
-  // Body
-  for (const block of String(contract.body_rendered).split(/\n{2,}/)) {
-    const t = block.trim(); if (!t) continue;
-    if (t.startsWith('## '))     { const [h, ...rest] = t.split('\n'); para(h.slice(3), { size:11, style:'bold', gap:4 }); if (rest.length) para(rest.join(' ').trim(), { size:10 }); }
-    else if (t.startsWith('# ')) { y += 6; t.split('\n').forEach(l => para(l.replace(/^#\s*/,''), { size:14, style:'bold', gap:2, align:'center' })); y += 6; }
-    else                         para(t.replace(/\n/g,' '), { size:10 });
-  }
-
-  // Signature page
-  doc.addPage(); y = M;
-  para('LAZAR FAMILY BAKEHOUSE LLC', { size:14, style:'bold', gap:2, align:'center' });
-  para(contract.title.toUpperCase(), { size:12, style:'bold', gap:2, align:'center' });
-  para('*** SIGNATURE PAGE ***', { size:11, style:'bold', gap:18, align:'center' });
-  para('IN WITNESS WHEREOF, the parties hereto have executed this Agreement, including Exhibit A (Statement of Work #1), as of the dates written below. This Agreement was executed electronically; the signature details and audit trail on the following page form part of the executed record.', { size:10, gap:24 });
+  // Body, split at Exhibit A so the signature pages land where they do on paper:
+  // one after the Agreement, one after the Statement of Work.
+  const renderBody = (text) => {
+    for (const block of String(text).split(/\n{2,}/)) {
+      const t = block.trim(); if (!t) continue;
+      if (t.startsWith('## '))     { const [h, ...rest] = t.split('\n'); para(h.slice(3), { size:11, style:'bold', gap:4 }); if (rest.length) para(rest.join(' ').trim(), { size:10 }); }
+      else if (t.startsWith('# ')) { y += 6; t.split('\n').forEach(l => para(l.replace(/^#\s*/,''), { size:14, style:'bold', gap:2, align:'center' })); y += 6; }
+      else                         para(t.replace(/\n/g,' '), { size:10 });
+    }
+  };
+  const full = String(contract.body_rendered);
+  const exIdx = full.search(/\n# EXHIBIT A/i);
+  const mainBody = exIdx >= 0 ? full.slice(0, exIdx) : full;
+  const exhibit  = exIdx >= 0 ? full.slice(exIdx) : '';
 
   const sigBlock = (party, name, title, when, typed) => {
     need(120);
@@ -4041,8 +4041,25 @@ async function buildContractPdf(contract, events) {
     doc.text(`Date: ${when ? fmtStamp(when) : ''}`, M, y); y += 14;
     doc.text(`Signed electronically`, M, y); y += 30;
   };
-  sigBlock('LAZAR FAMILY BAKEHOUSE LLC', contract.company_signer_name, contract.company_signer_title, contract.company_signed_at, contract.company_signer_name);
-  sigBlock('INDEPENDENT CONTRACTOR', contract.signer_typed_name, 'Independent Contractor', contract.signed_at, contract.signer_typed_name);
+  const signaturePage = (label, witness) => {
+    doc.addPage(); y = M;
+    para('LAZAR FAMILY BAKEHOUSE LLC', { size:14, style:'bold', gap:2, align:'center' });
+    para(contract.title.toUpperCase(), { size:12, style:'bold', gap:2, align:'center' });
+    para(label, { size:11, style:'bold', gap:18, align:'center' });
+    para(witness, { size:10, gap:24 });
+    sigBlock('LAZAR FAMILY BAKEHOUSE LLC', contract.company_signer_name, contract.company_signer_title, contract.company_signed_at, contract.company_signer_name);
+    sigBlock('INDEPENDENT CONTRACTOR', contract.signer_typed_name, 'Independent Contractor', contract.signed_at, contract.signer_typed_name);
+  };
+
+  renderBody(mainBody);
+  y += 10; para('*** SIGNATURE PAGE FOLLOWS ***', { size:10, style:'bold', gap:0, align:'center' });
+  signaturePage('*** AGREEMENT SIGNATURE PAGE ***', 'IN WITNESS WHEREOF, the parties hereto have executed this Agreement as of the dates written below. This Agreement was executed electronically; the signature details and audit trail at the end of this document form part of the executed record.');
+  if (exhibit) {
+    doc.addPage(); y = M;
+    renderBody(exhibit);
+    y += 10; para('*** SIGNATURE PAGE FOLLOWS ***', { size:10, style:'bold', gap:0, align:'center' });
+    signaturePage('*** SIGNATURE PAGE: STATEMENT OF WORK #1 ***', 'IN WITNESS WHEREOF, the parties hereto have executed this Statement of Work #1 as of the day and year first above written. One electronic signature executes the Agreement and this Statement of Work together.');
+  }
 
   // Audit certificate
   doc.addPage(); y = M;
