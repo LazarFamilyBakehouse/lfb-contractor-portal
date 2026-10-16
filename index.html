@@ -732,8 +732,8 @@ tbody td { padding:10px 12px; color:var(--brown-dk); vertical-align:top; }
     </div>
     <div class="login-card">
       <div class="lf" id="login-email-field">
-        <label for="login-email">Email</label>
-        <input id="login-email" type="email" autocomplete="username" inputmode="email" autocapitalize="none" />
+        <label for="login-email">Email or username</label>
+        <input id="login-email" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" />
       </div>
       <div class="lf">
         <label for="login-password" id="login-password-label">PIN</label>
@@ -828,6 +828,7 @@ const EMAILJS_TEMPLATES = {
   contract_declined: 'PLACEHOLDER_TEMPLATE_contract_declined'
 };
 const ADMIN_EMAIL = 'info@lazarfamilybakehouse.com'; // recipient for admin-facing emails
+const USERNAME_DOMAIN = 'contractors.lazarfamilybakehouse.com'; // "jake" at the login signs in as jake@<this>
 const PORTAL_URL  = (typeof window !== 'undefined' && window.location.origin.startsWith('http'))
   ? window.location.origin
   : 'https://contractors.lazarfamilybakehouse.com';
@@ -997,10 +998,11 @@ async function signIn() {
   const err = $('login-error');
   err.textContent = '';
   const isAdmin = document.body.dataset.loginMode === 'admin';
-  const email = isAdmin ? ADMIN_LOGIN_EMAIL : v('login-email').toLowerCase().replace(/\s+/g,'');
+  let email = isAdmin ? ADMIN_LOGIN_EMAIL : v('login-email').toLowerCase().replace(/\s+/g,'');
+  if (!isAdmin && email && !email.includes('@')) email = email + '@' + USERNAME_DOMAIN;  // short usernames map to an internal address
   const password = isAdmin ? v('login-password') : v('login-password').replace(/\s+/g,'');
   if (!email || !password) {
-    err.textContent = isAdmin ? 'Enter the admin PIN.' : 'Email and PIN are required.';
+    err.textContent = isAdmin ? 'Enter the admin PIN.' : 'Email (or username) and PIN are required.';
     return;
   }
   btn.disabled = true;
@@ -1087,7 +1089,7 @@ async function bootApp() {
   $('hdr-subtitle').textContent = session.role === 'admin' ? 'Admin Dashboard' : 'Contractor Portal';
   buildNav();
   buildContent();
-  const firstSection = session.role === 'admin' ? 'a-guide' : 'c-guide';
+  const firstSection = session.role === 'admin' ? 'a-dashboard' : 'c-home';
   showSection(firstSection);
   setupRealtime();
   renderNotifBanner();
@@ -1097,7 +1099,6 @@ async function bootApp() {
    NAV
    ============================================================ */
 const ADMIN_SECTIONS = [
-  { id:'a-guide',        label:'Guide',        icon:'📖' },
   { id:'a-dashboard',    label:'Dashboard',    icon:'📊' },
   { id:'a-shifts',       label:'Shifts',       icon:'🧑‍🍳' },
   { id:'a-availability', label:'Availability', icon:'📅' },
@@ -1111,7 +1112,6 @@ const ADMIN_SECTIONS = [
   // Audit log hidden from nav (triggers still capture data; restore by adding {id:'a-audit', label:'Audit', icon:'📜'} back to this array)
 ];
 const CONTRACTOR_SECTIONS = [
-  { id:'c-guide',        label:'Guide',        icon:'📖' },
   { id:'c-home',         label:'Home',         icon:'🏠' },
   { id:'c-schedule',     label:'Schedule',     icon:'📅' },
   { id:'c-myshifts',     label:'My Shifts',    icon:'📋' },
@@ -1119,12 +1119,13 @@ const CONTRACTOR_SECTIONS = [
   { id:'c-payments',     label:'Payments',     icon:'💵' },
   { id:'c-contracts',    label:'Agreements',   icon:'✍️' },
   { id:'c-referrals',    label:'Referrals',    icon:'🤝' },
-  { id:'c-profile',      label:'Profile',      icon:'👤' }
+  { id:'c-profile',      label:'Profile',      icon:'👤' },
+  { id:'c-guide',        label:'Quick guide',  icon:'📖' }
 ];
 
 function currentSections(){ return session.role === 'admin' ? ADMIN_SECTIONS : CONTRACTOR_SECTIONS; }
 
-const PRIMARY_NAV = { admin: ['a-guide','a-dashboard','a-shifts','a-approvals'], contractor: ['c-guide','c-home','c-schedule','c-myshifts'] };
+const PRIMARY_NAV = { admin: ['a-dashboard','a-shifts','a-approvals','a-payments'], contractor: ['c-home','c-schedule','c-myshifts','c-payments'] };
 function navIsPrimary(id){ return (PRIMARY_NAV[session.role] || []).includes(id); }
 function buildNav() {
   const nav = $('main-nav');
@@ -1280,7 +1281,6 @@ SECTION_RENDERERS['c-payments']     = renderContractorPayments;
 SECTION_RENDERERS['c-profile']      = renderContractorProfile;
 SECTION_RENDERERS['c-referrals']    = renderContractorReferrals;
 SECTION_RENDERERS['a-referrals']    = renderAdminReferrals;
-SECTION_RENDERERS['a-guide']        = renderAdminGuide;
 SECTION_RENDERERS['a-contracts']    = renderAdminContracts;
 SECTION_RENDERERS['c-contracts']    = renderContractorContracts;
 
@@ -1808,6 +1808,15 @@ async function renderContractorHome() {
   el.innerHTML = `
     <div class="page-h">Welcome back, ${esc(c.first_name||'baker')}</div>
     <div class="page-sub">Lazar Family Bakehouse · Contractor</div>
+
+    ${guideSeen() ? '' : `
+      <div class="panel" id="guide-nudge" style="border-left:4px solid var(--gold);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;">
+        <div style="font-size:.92rem;"><strong>New here?</strong> The quick guide takes one minute.</div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary btn-sm" onclick="showSection('c-guide')">Read the quick guide</button>
+          <button class="btn btn-outline btn-sm" onclick="dismissGuideNudge()">Got it</button>
+        </div>
+      </div>`}
 
     ${clockHtml}
 
@@ -4722,59 +4731,52 @@ window.runCompletePastShifts = async function() {
 // ============================================================
 async function renderContractorGuide() {
   const el = $('sec-c-guide');
-  const c = session.contractor;
+  markGuideSeen();
   el.innerHTML = `
-    <div class="page-h">Welcome${c.first_name ? ', '+esc(c.first_name) : ''}</div>
-    <div class="page-sub">A quick guide to the portal</div>
+    <div class="page-h">Quick guide</div>
+    <div class="page-sub">Everything you need to know, in one minute</div>
 
     <div class="panel">
-      <div class="panel-title">What this portal does</div>
-      <p style="font-size:.95rem;line-height:1.6;color:var(--brown-dk);">
-        This is your home base for working with Lazar Family Bakehouse. You can see upcoming bake shifts,
-        sign up for ones that work for you, mark your availability, submit hours after each shift, and
-        track your payments, all in one place.
-      </p>
+      <div class="panel-title">Every shift</div>
+      <ol style="padding-left:20px;font-size:.95rem;line-height:1.9;color:var(--brown-dk);margin:0;">
+        <li>Open <strong>Home</strong> and tap <strong>Clock in</strong> when you start.</li>
+        <li>Tap <strong>Clock out</strong> when you finish. Add a note if something unusual happened.</li>
+        <li>Admin approves your hours. They show up in <strong>Payments</strong> with the amount you are owed.</li>
+      </ol>
+      <p style="font-size:.86rem;color:var(--muted);margin:10px 0 0;">Forgot to clock in? Open <strong>My Shifts</strong> and <em>Submit hours</em> by hand instead. Do one or the other, not both.</p>
     </div>
 
     <div class="panel">
-      <div class="panel-title">The tabs at the top</div>
+      <div class="panel-title">Getting on the schedule</div>
       <ul style="list-style:none;padding:0;margin:0;font-size:.92rem;line-height:1.8;">
-        <li><strong>🏠 Home</strong>: your dashboard. The <strong>Time clock</strong> lives here: tap <em>Clock in</em> when you start work and <em>Clock out</em> when you finish. Your hours go to the admin for approval, then show up in Payments. Also: next shift, YTD totals, profile reminders.</li>
-        <li><strong>📅 Schedule</strong>: upcoming bake shifts. Tap to sign up for any with open spots.</li>
-        <li><strong>📋 My Shifts</strong>: shifts you've signed up for, plus the form to submit hours after each bake.</li>
-        <li><strong>🗓️ Availability</strong>: tap any future day to mark yourself as Free / Busy / Tentative. The more dates you fill, the better we can plan around you.</li>
-        <li><strong>💵 Payments</strong>: what's been paid, what's pending, and your full payment history.</li>
-        <li><strong>🤝 Referrals</strong>: know someone who'd be a good baker? Submit their info here.</li>
-        <li><strong>👤 Profile</strong>: your contact info, emergency contact, food handler card, and documents (W-9, etc).</li>
+        <li><strong>🗓️ Availability</strong>: tap future days to mark yourself Free, Busy or Tentative. This is how bakes get planned.</li>
+        <li><strong>📅 Schedule</strong>: open bakes with spots left. Tap <em>Sign up</em> to claim one. You get an email confirmation.</li>
+        <li><strong>📋 My Shifts</strong>: what you are signed up for. Need to bow out? Tap <em>Release spot</em> as early as you can so someone else can take it.</li>
       </ul>
     </div>
 
     <div class="panel">
-      <div class="panel-title">Typical workflow</div>
-      <ol style="padding-left:20px;font-size:.92rem;line-height:1.8;color:var(--brown-dk);">
-        <li>Check <strong>Availability</strong>: mark which weekends/weekdays you can work for the next few months.</li>
-        <li>Watch <strong>Schedule</strong> for new shifts. When one shows up that you're free for, click <em>Sign up</em>.</li>
-        <li>Show up and bake.</li>
-        <li>Use the <strong>Time clock</strong> on Home: clock in when you start, clock out when you finish. Forgot to clock in? Open <strong>My Shifts</strong> and <em>Submit hours</em> by hand instead, but do one or the other, not both. Admin reviews and approves.</li>
-        <li>Check <strong>Payments</strong> to see your YTD totals and when each payment lands.</li>
-      </ol>
-    </div>
-
-    <div class="panel">
-      <div class="panel-title">Need to bow out of a shift you signed up for?</div>
-      <p style="font-size:.92rem;line-height:1.6;">
-        Go to <strong>My Shifts</strong>, find the upcoming shift, click <em>Release spot</em>. Other contractors
-        get notified that the spot opened up. Please release as early as you know, the more lead time, the
-        easier to find someone to fill in.
-      </p>
+      <div class="panel-title">Everything else</div>
+      <ul style="list-style:none;padding:0;margin:0;font-size:.92rem;line-height:1.8;">
+        <li><strong>💵 Payments</strong>: approved hours, what has been paid, what is pending.</li>
+        <li><strong>✍️ Agreements</strong>: contracts to review and sign, plus signed copies.</li>
+        <li><strong>👤 Profile</strong>: contact info, emergency contact, food handler card, W-9.</li>
+        <li><strong>🤝 Referrals</strong>: know a good baker? Send them our way.</li>
+      </ul>
     </div>
 
     <div class="panel" style="background:var(--cream-lt);border-left:3px solid var(--accent);">
       <div class="panel-title">Questions?</div>
-      <p style="font-size:.92rem;">Reach out to admin: <a href="mailto:info@lazarfamilybakehouse.com" style="color:var(--accent-dk);">info@lazarfamilybakehouse.com</a></p>
+      <p style="font-size:.92rem;margin:0;">Email <a href="mailto:info@lazarfamilybakehouse.com" style="color:var(--accent-dk);">info@lazarfamilybakehouse.com</a></p>
     </div>
   `;
 }
+
+// one-time "new here?" nudge on Home (per device)
+function guideSeenKey(){ return 'lfb_guide_seen_' + (session.contractor && session.contractor.id); }
+function guideSeen(){ try { return localStorage.getItem(guideSeenKey()) === '1'; } catch (e) { return true; } }
+function markGuideSeen(){ try { localStorage.setItem(guideSeenKey(), '1'); } catch (e) {} }
+window.dismissGuideNudge = function(){ markGuideSeen(); const n = $('guide-nudge'); if (n) n.remove(); };
 
 // ============================================================
 // CONTRACTOR, REFERRALS
@@ -5110,81 +5112,6 @@ window.adminPromoteShift = async function(shiftId) {
   } catch (e) { toast(e.message || 'Failed', {error:true}); }
 };
 
-
-// ============================================================
-// ADMIN, GUIDE (orientation for admin)
-// ============================================================
-async function renderAdminGuide() {
-  const el = $('sec-a-guide');
-  el.innerHTML = `
-    <div class="page-h">Admin Guide</div>
-    <div class="page-sub">How to run the contractor portal</div>
-
-    <div class="panel">
-      <div class="panel-title">Quick start</div>
-      <p style="font-size:.95rem;line-height:1.6;">
-        This portal runs the contractor side of LFB end-to-end. Contractors sign in to mark availability, sign up for shifts, submit hours, and see their pay. You manage the bake schedule, approve hours, record payments, and onboard new contractors.
-      </p>
-    </div>
-
-    <div class="panel">
-      <div class="panel-title">Your tabs</div>
-      <ul style="list-style:none;padding:0;margin:0;font-size:.92rem;line-height:1.8;">
-        <li><strong>📊 Dashboard</strong>: outstanding to pay (front and center), YTD totals, per-contractor table with 1099 flags and food-card expirations.</li>
-        <li><strong>🧑‍🍳 Shifts</strong>: create new bake shifts. Supports multiple start times (9 / 11 / 1) and tentative status for unconfirmed bakes. Past shifts shown for reference. <em>Cancel</em> keeps a record and emails anyone signed up; <em>Delete</em> removes the shift entirely (refused if hours on it were already paid).</li>
-        <li><strong>📅 Availability</strong>: calendar heatmap. Tap any day to see which contractors are free / busy / tentative, and post a shift directly from that date.</li>
-        <li><strong>✅ Approvals</strong>: two kinds of items land here. <strong>Time clock entries</strong> (contractor clocked in and out from Home; you see the in/out times, the hours, the dollar amount you will be paying out, and the location if their phone shared it) and <strong>manually submitted hours</strong> (entered from My Shifts). Adjust the times or hours if needed, then approve, or reject with a note. You can also see who is on the clock right now and clock someone out if they forgot. Approved hours snapshot the pay rate at that moment, so future rate changes don't rewrite history. If there was no shift on the schedule that day, approving a time clock entry creates one automatically so Payments and YTD stay accurate.</li>
-        <li><strong>💵 Payments</strong>: per contractor, see what they're owed and record payment (check / Venmo / Zelle / cash). Click "Pay" &rarr; check the hour records this payment covers &rarr; enter amount and method.</li>
-        <li><strong>🏠 Kitchen</strong>: two things: the hours we use the Kent Denver kitchen (logged per bake at $10/hr, with what is still owed to Kent and a "Mark month paid" button), and below it the rent we collect from outside kitchen users.</li>
-        <li><strong>👥 Contractors</strong>: add / edit / deactivate. Each row has a "History" button (full hours + payments timeline) and "Edit" (profile + PIN management). Use "Generate new PIN" to rotate; share PIN with contractor out of band.</li>
-        <li><strong>🤝 Referrals</strong>: contractors can refer friends. They show up here as "new", update status as you process each one.</li>
-        <li><strong>⚙️ Settings</strong>: defaults for new shifts (location, start/end times), EmailJS configuration status, maintenance tools.</li>
-      </ul>
-    </div>
-
-    <div class="panel">
-      <div class="panel-title">Common workflows</div>
-      <ol style="padding-left:20px;font-size:.92rem;line-height:1.8;">
-        <li><strong>Onboard a new contractor:</strong> Contractors &rarr; "+ Add contractor" &rarr; fill in details and PIN (auto-generated, edit if you want) &rarr; click "Add &amp; activate login" &rarr; text/call them the PIN.</li>
-        <li><strong>Post a new bake:</strong> Shifts &rarr; "+ New shift" &rarr; date, start time(s), location, spots, notes &rarr; choose Open (notifies contractors) or Tentative (locked until promoted).</li>
-        <li><strong>Approve hours after a bake:</strong> Approvals &rarr; review each submission, tweak hours if needed, add an optional note for the contractor &rarr; Approve.</li>
-        <li><strong>Pay people:</strong> Payments &rarr; click "Pay" on a contractor's row &rarr; tick which hour records this payment covers (all selected by default) &rarr; method + reference + paid date &rarr; record.</li>
-        <li><strong>Check what you owe:</strong> Dashboard top card. Click "Pay now" to jump straight to payments.</li>
-        <li><strong>Plan around availability:</strong> Availability &rarr; tap a date &rarr; see who's free &rarr; post the shift right from the modal.</li>
-      </ol>
-    </div>
-
-    <div class="panel">
-      <div class="panel-title">PIN management</div>
-      <p style="font-size:.92rem;line-height:1.6;">
-        Every contractor has a 6-digit PIN. They sign in with their email + PIN at the main login screen. You sign in via the small "Admin" link in the bottom-left of the login screen (uses your existing wholesale-portal password as the admin PIN).
-      </p>
-      <p style="font-size:.92rem;line-height:1.6;margin-top:8px;">
-        To rotate a contractor's PIN: Contractors &rarr; click their row &rarr; "Edit" &rarr; "Generate new PIN" &rarr; "Copy" &rarr; share with them. Their old PIN stops working immediately. <strong>Note:</strong> for imported contractors who don't have a login yet, click "Activate Login" first to create their auth account with the displayed PIN.
-      </p>
-    </div>
-
-    <div class="panel" style="background:var(--cream-lt);border-left:3px solid var(--accent);">
-      <div class="panel-title">Coming next (Phase 3+)</div>
-      <ul style="list-style:disc;padding-left:20px;font-size:.92rem;line-height:1.7;">
-        <li>PDF contract generation with contractor e-signature, stored privately in Supabase</li>
-        <li>24-hour shift reminder emails (requires EmailJS or Resend activation)</li>
-        <li>SMS shift-fill alerts via Twilio for urgent fills</li>
-      </ul>
-    </div>
-
-    <div class="panel">
-      <div class="panel-title">Where things live</div>
-      <ul style="list-style:none;padding:0;margin:0;font-size:.86rem;line-height:1.8;color:var(--muted);">
-        <li><strong>Code:</strong> <a href="https://github.com/LazarFamilyBakehouse/lfb-contractor-portal" target="_blank" style="color:var(--accent-dk);">github.com/LazarFamilyBakehouse/lfb-contractor-portal</a></li>
-        <li><strong>Database:</strong> <a href="https://supabase.com/dashboard/project/ylvoswzsijigyezqvaat" target="_blank" style="color:var(--accent-dk);">Supabase dashboard</a> (shared with wholesale portal)</li>
-        <li><strong>Hosting:</strong> GitHub Pages, auto-deploys ~60s after each commit to main</li>
-        <li><strong>DNS:</strong> Hostinger (CNAME contractors &rarr; lazarfamilybakehouse.github.io)</li>
-        <li><strong>Audit log:</strong> Hidden from the UI but still captured; restore by editing index.html &rarr; ADMIN_SECTIONS</li>
-      </ul>
-    </div>
-  `;
-}
 
 
 // ============================================================
