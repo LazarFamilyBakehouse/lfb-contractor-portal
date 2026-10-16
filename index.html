@@ -831,7 +831,9 @@ const EMAILJS_TEMPLATES = {
   contract_declined: 'PLACEHOLDER_TEMPLATE_contract_declined'
 };
 const ADMIN_EMAIL = 'info@lazarfamilybakehouse.com'; // recipient for admin-facing emails
-const USERNAME_DOMAIN = 'contractors.lazarfamilybakehouse.com'; // "jake" at the login signs in as jake@<this>
+const USERNAME_DOMAIN = 'contractors.lazarfamilybakehouse.com'; // "name" at the login signs in as name@<this>
+// short usernames for the admins (any other username maps to USERNAME_DOMAIN)
+const USERNAME_ALIASES = { jake: 'info@lazarfamilybakehouse.com', victoria: 'victoria@lazarfamilybakehouse.com' };
 const PORTAL_URL  = (typeof window !== 'undefined' && window.location.origin.startsWith('http'))
   ? window.location.origin
   : 'https://contractors.lazarfamilybakehouse.com';
@@ -992,10 +994,10 @@ function toggleAdminLogin() {
   const adminBtn   = $('admin-toggle-btn');
   if (mode === 'admin') {
     emailField.style.display = '';
-    emailField.querySelector('label').textContent = 'Admin email';
-    if (!v('login-email') || !v('login-email').includes('@')) $('login-email').value = ADMIN_LOGIN_EMAIL;
-    pwLabel.textContent = 'Admin PIN';
-    pwInput.placeholder = 'Admin PIN';
+    emailField.querySelector('label').textContent = 'Admin username or email';
+    $('login-email').placeholder = 'jake or victoria';
+    pwLabel.textContent = 'Password';
+    pwInput.placeholder = 'Password';
     subtitle.textContent = 'Admin Login';
     firstTime.style.display = 'none';
     hintArea.innerHTML = '<button class="login-link" onclick="toggleAdminLogin()">&larr; Back to contractor login</button>';
@@ -1004,7 +1006,7 @@ function toggleAdminLogin() {
   } else {
     emailField.style.display = '';
     emailField.querySelector('label').textContent = 'Email or username';
-    if (v('login-email') === ADMIN_LOGIN_EMAIL) $('login-email').value = '';
+    $('login-email').placeholder = '';
     pwLabel.textContent = 'PIN';
     pwInput.placeholder = '6-digit PIN from admin';
     subtitle.textContent = 'Contractor Portal';
@@ -1021,10 +1023,10 @@ async function signIn() {
   err.textContent = '';
   const isAdmin = document.body.dataset.loginMode === 'admin';
   let email = (isAdmin ? (v('login-email') || ADMIN_LOGIN_EMAIL) : v('login-email')).toLowerCase().replace(/\s+/g,'');
-  if (!isAdmin && email && !email.includes('@')) email = email + '@' + USERNAME_DOMAIN;  // short usernames map to an internal address
+  if (email && !email.includes('@')) email = USERNAME_ALIASES[email] || (email + '@' + USERNAME_DOMAIN);  // usernames: admins by alias, others map to an internal address
   const password = isAdmin ? v('login-password') : v('login-password').replace(/\s+/g,'');
   if (!email || !password) {
-    err.textContent = isAdmin ? 'Enter the admin PIN.' : 'Email (or username) and PIN are required.';
+    err.textContent = isAdmin ? 'Enter your username and password.' : 'Email (or username) and PIN are required.';
     return;
   }
   btn.disabled = true;
@@ -1034,7 +1036,7 @@ async function signIn() {
     if (error) {
       console.warn('signIn', error);
       const m = String(error.message||'').toLowerCase();
-      if (m.includes('invalid login')) throw new Error(isAdmin ? 'Incorrect admin password.' : 'Email or PIN is wrong. PINs are the 6 digits your admin gave you; the email must match the one on file.');
+      if (m.includes('invalid login')) throw new Error(isAdmin ? 'Incorrect username or password.' : 'Email or PIN is wrong. PINs are the 6 digits your admin gave you; the email must match the one on file.');
       if (m.includes('rate') || error.status === 429) throw new Error('Too many attempts. Wait a minute and try again.');
       if (m.includes('fetch') || m.includes('network')) throw new Error('No connection. Check your internet and try again.');
       throw new Error('Sign in failed: ' + (error.message || 'unknown error'));
