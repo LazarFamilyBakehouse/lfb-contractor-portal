@@ -227,4 +227,4 @@ grant execute on function public.c_time_entry_reject(uuid, text) to authenticate
 
 commit;
 
-select 'c_time_entries ready' as result, count(*) as rows from public.c_time_entries;
+select 'c_time_entries ready' as result, count(*) as n from public.c_time_entries;
