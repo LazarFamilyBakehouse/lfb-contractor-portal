@@ -3620,6 +3620,7 @@ async function renderAdminContractors() {
     <div class="panel-actions" style="margin-bottom:14px;">
       <button class="btn btn-primary" onclick="openAddContractorModal()">+ Add contractor</button>
       <button class="btn btn-gold" onclick="activateAllLogins()">⚡ Activate all unlinked logins</button>
+      <button class="btn btn-outline" onclick="sendLoginInfoToAll()" title="Welcome email with portal link, email and PIN to every active contractor">📧 Email login info to all active</button>
     </div>
 
     <div class="panel">
@@ -3659,6 +3660,31 @@ window.sendLoginInfo = async function(id) {
   if (!confirm(`Email ${c.first_name} their login details (portal link, email, PIN) at ${c.email}?`)) return;
   const r = await notify('welcome', { to_email: c.email, first_name: c.first_name, login_email: c.email, pin: c.pin, portal_url: PORTAL_URL });
   if (r && !r.stubbed && !r.error) toast(`Login details sent to ${c.email}`); else toast('Could not send: ' + (r?.error || 'see console'), {error:true});
+};
+
+// Launch helper: email login details to every active contractor with a real address
+window.sendLoginInfoToAll = async function() {
+  const all = await loadAllContractors({ activeOnly:true });
+  const targets = all.filter(c => c.role === 'contractor' && c.pin && !/@pending\.lfb$/i.test(c.email) && !/^jake@contractors\./i.test(c.email));
+  const skipped = all.filter(c => c.role === 'contractor' && !targets.includes(c));
+  openModal('Email login details to everyone?', `
+    <p style="font-size:.92rem;margin-top:0;">This sends the welcome email (portal link, their email, their PIN) to <strong>${targets.length}</strong> active contractor${targets.length===1?'':'s'}:</p>
+    <p style="font-size:.86rem;color:var(--muted);">${esc(targets.map(c => c.first_name).join(', '))}</p>
+    ${skipped.length ? `<p style="font-size:.84rem;color:var(--muted);">Skipped (no real email or test account): ${esc(skipped.map(c => c.first_name).join(', '))}</p>` : ''}
+    <p style="font-size:.84rem;color:var(--muted);">Takes about ${Math.ceil(targets.length * 0.6)} seconds. Keep this window open.</p>
+  `, [
+    { label:'Cancel' },
+    { label:`Send to ${targets.length}`, cls:'btn-primary', onClick: async () => {
+      closeModal(); let ok = 0, bad = [];
+      toast('Sending login emails...');
+      for (const c of targets) {
+        const r = await notify('welcome', { to_email: c.email, first_name: c.first_name, login_email: c.email, pin: c.pin, portal_url: PORTAL_URL });
+        if (r && !r.stubbed && !r.error) ok++; else bad.push(c.first_name);
+        await sleep(500);
+      }
+      toast(`Sent ${ok} login email${ok===1?'':'s'}${bad.length ? '. Failed: ' + bad.join(', ') : ''}`, { error: bad.length > 0 });
+    } }
+  ]);
 };
 
 window.openAddContractorModal = function() {
