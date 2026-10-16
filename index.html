@@ -706,6 +706,9 @@ tbody td { padding:10px 12px; color:var(--brown-dk); vertical-align:top; }
 .b-open { background:#ffe3e3; color:var(--accent-dk); }
 .b-rejected { background:#eee; color:#666; }
 .te-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.payout-line { font-size:.95rem; color:var(--brown-dk); margin:4px 0 10px; }
+.payout-line strong { font-size:1.25rem; color:var(--accent-dk); font-family:'Playfair Display',serif; }
+.payout-line span { color:var(--muted); font-size:.82rem; }
 @media (max-width:639px) { .te-grid { grid-template-columns:1fr; } .clock-time { font-size:1.9rem; } .btn-clock { width:100%; } }
 
 @media print {
@@ -1393,7 +1396,7 @@ async function loadYTDSummary(year) {
 
 async function loadPendingApprovals() {
   const { data, error } = await sb.from('c_hour_submissions')
-    .select('*, shift:c_shifts(*), contractor:c_contractors!contractor_id(first_name, last_name, email)')
+    .select('*, shift:c_shifts(*), contractor:c_contractors!contractor_id(first_name, last_name, email, pay_rate)')
     .eq('status', 'pending')
     .order('submitted_at', { ascending: true });
   if (error) { toast(error.message,{error:true}); return []; }
@@ -1916,7 +1919,7 @@ async function timeClockCardHtml() {
     <div class="te-list">
       ${recent.map(t => `
         <div class="te-item">
-          <span class="te-when">${esc(fmtDateShort(t.work_date))} · ${fmtClockTime(t.clock_in)} to ${fmtClockTime(t.clock_out)}${t.break_minutes ? ` (${t.break_minutes} min break)` : ''}</span>
+          <span class="te-when">${esc(fmtDateShort(t.work_date))} · ${fmtClockTime(t.clock_in)} to ${fmtClockTime(t.clock_out)}</span>
           <span style="display:flex;gap:8px;align-items:center;">
             <span class="te-hrs">${teHoursLabel(t)}</span>${teStatusBadge(t)}
             ${t.status === 'submitted' ? `<button class="btn btn-outline btn-sm" onclick="cancelClockIn('${t.id}')" title="Remove this entry">Remove</button>` : ''}
@@ -1962,15 +1965,14 @@ window.clockIn = async function() {
 window.clockOutPrompt = function(entryId) {
   openModal('Clock out', `
     <p style="font-size:.9rem;color:var(--muted);margin-top:0;">Your time goes to the admin for approval. Approved hours show up in Payments.</p>
-    <div class="fg"><label>Unpaid break (minutes)</label><input id="co-break" type="number" min="0" max="480" step="5" value="0" inputmode="numeric" /></div>
     <div class="fg"><label>Notes for admin (optional)</label><input id="co-notes" placeholder="e.g. stayed late to finish bagging" /></div>
   `, [
     { label:'Cancel' },
     { label:'Clock out', cls:'btn-primary', onClick: async () => {
-        const brk = Number(v('co-break') || 0), notes = v('co-notes');
+        const notes = v('co-notes');
         try {
           const pos = await getPositionQuick();
-          const { data, error } = await sb.rpc('c_clock_out', { p_entry_id: entryId, p_notes: notes || null, p_break_minutes: brk, p_lat: pos ? pos.lat : null, p_lng: pos ? pos.lng : null });
+          const { data, error } = await sb.rpc('c_clock_out', { p_entry_id: entryId, p_notes: notes || null, p_break_minutes: 0, p_lat: pos ? pos.lat : null, p_lng: pos ? pos.lng : null });
           if (error) throw error;
           closeModal();
           toast(`Clocked out: ${Number(data.worked_hours).toFixed(2)} hours sent for approval`);
@@ -1979,7 +1981,7 @@ window.clockOutPrompt = function(entryId) {
             contractor_name: `${session.contractor.first_name} ${session.contractor.last_name}`.trim(),
             bake_date:       fmtDate(data.work_date),
             submitted_hours: Number(data.worked_hours).toFixed(2),
-            submitted_notes: `Time clock: in ${fmtClockTime(data.clock_in)}, out ${fmtClockTime(data.clock_out)}${brk ? `, ${brk} min break` : ''}${notes ? `. ${notes}` : ''}`,
+            submitted_notes: `Time clock: in ${fmtClockTime(data.clock_in)}, out ${fmtClockTime(data.clock_out)}${notes ? `. ${notes}` : ''}`,
             portal_url:      PORTAL_URL
           });
           refreshActiveSection();
@@ -2821,10 +2823,44 @@ function adminShiftCardHtml(s) {
       <div class="card-actions">
         <button class="btn btn-outline btn-sm" onclick="adminOpenShiftDetail('${s.id}')">View / edit</button>
         ${s.status === 'open' ? `<button class="btn btn-danger btn-sm" onclick="adminCancelShiftPrompt('${s.id}','${esc(fmtDate(s.bake_date))}')">Cancel</button>` : ''}
+        <button class="btn btn-outline btn-sm" onclick="adminDeleteShiftPrompt('${s.id}','${esc(fmtDate(s.bake_date))}')">Delete</button>
       </div>
     </div>
   `;
 }
+
+window.adminDeleteShiftPrompt = async function(shiftId, dateLabel) {
+  const [{ count: nSign }, { count: nHours }, { data: signups }] = await Promise.all([
+    sb.from('c_shift_signups').select('*', { count:'exact', head:true }).eq('shift_id', shiftId).neq('status','released'),
+    sb.from('c_hour_submissions').select('*', { count:'exact', head:true }).eq('shift_id', shiftId),
+    sb.from('c_shift_signups').select('contractor:c_contractors!contractor_id(email, first_name)').eq('shift_id', shiftId).eq('status','signed_up')
+  ]);
+  openModal('Delete shift?', `
+    <p style="font-size:.92rem;margin-top:0;">Permanently delete the ${esc(dateLabel)} shift? This cannot be undone.</p>
+    <ul style="font-size:.88rem;color:var(--muted);margin:8px 0 0 18px;padding:0;">
+      <li>${nSign||0} signup${nSign===1?'':'s'} will be removed${(nSign||0) ? ' and those contractors emailed' : ''}.</li>
+      <li>${nHours||0} hour record${nHours===1?'':'s'} on this shift will be removed.</li>
+      <li>If any hours on this shift were already paid, the delete is refused. Use Cancel instead.</li>
+    </ul>
+  `, [
+    { label:'Keep shift', cls:'btn-outline', onClick: closeModal },
+    { label:'Delete shift', cls:'btn-danger', onClick: async () => {
+      try {
+        const { error } = await sb.rpc('c_delete_shift', { p_shift_id: shiftId });
+        if (error) throw error;
+        closeModal();
+        toast('Shift deleted');
+        const future = daysFromToday(dateLabel ? isoFromDate(new Date(dateLabel)) : todayISO()) >= 0;
+        if (future && (signups||[]).length) {
+          notifyMany('shift_cancelled', signups.map(x => x.contractor), c => ({
+            to_email: c.email, first_name: c.first_name, bake_date: dateLabel, location: '', cancel_reason_line: 'The shift was removed from the schedule.', portal_url: PORTAL_URL
+          }));
+        }
+        refreshActiveSection();
+      } catch (e) { toast(e.message || 'Delete failed', {error:true}); }
+    }}
+  ]);
+};
 
 window.openCreateShiftModal = async function(preDate) {
   const settings = await loadSettings();
@@ -2923,6 +2959,7 @@ window.adminOpenShiftDetail = async function(shiftId) {
     </div>
   `, [
     { label:'Close', cls:'btn-outline', onClick: closeModal },
+    { label:'Delete', cls:'btn-danger', onClick: () => adminDeleteShiftPrompt(shiftId, fmtDate(shift.bake_date)) },
     { label:'Save changes', cls:'btn-primary', onClick: async () => {
       try {
         await adminUpdateShift(shiftId, {
@@ -3152,21 +3189,21 @@ function timeEntryCardHtml(t) {
       <div class="card-hd">
         <div>
           <h3>${esc(t.contractor.first_name||'')} ${esc(t.contractor.last_name||'')}</h3>
-          <div class="card-sub">${esc(fmtDateShort(t.work_date))} · ${fmtClockTime(t.clock_in)} to ${fmtClockTime(t.clock_out)}${t.break_minutes ? ` · ${t.break_minutes} min break` : ''}${t.shift ? ` · 📍 ${esc(t.shift.location)}` : ' · no shift on the schedule that day'}</div>
+          <div class="card-sub">${esc(fmtDateShort(t.work_date))} · ${fmtClockTime(t.clock_in)} to ${fmtClockTime(t.clock_out)}${t.shift ? ` · 📍 ${esc(t.shift.location)}` : ' · no shift on the schedule that day'}</div>
         </div>
-        <span class="badge ${long ? 'b-open' : 'b-pending'}">${hrs.toFixed(2)}h${long ? ' (long)' : ''}</span>
+        <span class="badge ${long ? 'b-open' : 'b-pending'}">${hrs.toFixed(2)} hrs${long ? ' (long)' : ''}</span>
       </div>
       ${t.notes ? `<div class="card-body" style="font-size:.84rem;margin-bottom:8px;"><em>"${esc(t.notes)}"</em></div>` : ''}
       ${(t.in_lat || t.out_lat) ? `<div style="font-size:.78rem;color:var(--muted);margin-bottom:8px;">📍 ${t.in_lat ? `<a href="https://maps.google.com/?q=${t.in_lat},${t.in_lng}" target="_blank" rel="noopener">clock-in location</a>` : ''}${t.in_lat && t.out_lat ? ' · ' : ''}${t.out_lat ? `<a href="https://maps.google.com/?q=${t.out_lat},${t.out_lng}" target="_blank" rel="noopener">clock-out location</a>` : ''}</div>` : ''}
       <div class="te-grid" style="margin-bottom:8px;">
         <div class="fg"><label>Clock in</label><input id="te-in-${t.id}" type="datetime-local" value="${toDenverLocalInput(t.clock_in)}" onchange="teRecalc('${t.id}')" /></div>
         <div class="fg"><label>Clock out</label><input id="te-out-${t.id}" type="datetime-local" value="${toDenverLocalInput(t.clock_out)}" onchange="teRecalc('${t.id}')" /></div>
-        <div class="fg"><label>Break (min)</label><input id="te-brk-${t.id}" type="number" min="0" max="480" step="5" value="${t.break_minutes||0}" inputmode="numeric" onchange="teRecalc('${t.id}')" /></div>
-        <div class="fg"><label>Approve hours <span id="te-amt-${t.id}" style="color:var(--muted);font-weight:normal;">(${fmtCur(hrs*rate)} at ${fmtCur(rate)}/hr)</span></label><input id="te-h-${t.id}" type="number" step="0.25" min="0" max="24" value="${hrs.toFixed(2)}" inputmode="decimal" data-rate="${rate}" oninput="teAmt('${t.id}')" /></div>
+        <div class="fg"><label>Approve hours</label><input id="te-h-${t.id}" type="number" step="0.25" min="0" max="24" value="${hrs.toFixed(2)}" inputmode="decimal" data-rate="${rate}" oninput="teAmt('${t.id}')" /></div>
+        <div class="fg"><label>Admin note (visible to contractor)</label><input id="te-n-${t.id}" value="" placeholder="optional" /></div>
       </div>
-      <div class="fg" style="margin-bottom:8px;"><label>Admin note (visible to contractor)</label><input id="te-n-${t.id}" value="" placeholder="optional" /></div>
+      <div class="payout-line">Paying out <strong id="te-amt-${t.id}">${fmtCur(hrs*rate)}</strong> <span>(${hrs.toFixed(2)} hrs at ${fmtCur(rate)}/hr)</span></div>
       <div class="card-actions">
-        <button class="btn btn-primary btn-sm" onclick="approveTimeEntry('${t.id}')">Approve</button>
+        <button class="btn btn-primary btn-sm" onclick="approveTimeEntry('${t.id}')">Approve ${fmtCur(hrs*rate)}</button>
         <button class="btn btn-outline btn-sm" onclick="rejectTimeEntryPrompt('${t.id}')">Reject</button>
       </div>
     </div>
@@ -3175,15 +3212,15 @@ function timeEntryCardHtml(t) {
 
 window.teRecalc = function(id) {
   const i = fromDenverLocalInput($('te-in-'+id).value), o = fromDenverLocalInput($('te-out-'+id).value);
-  const brk = Number($('te-brk-'+id).value || 0);
   if (!i || !o) return;
-  const h = Math.max(0, (new Date(o) - new Date(i)) / 3600000 - brk/60);
+  const h = Math.max(0, (new Date(o) - new Date(i)) / 3600000);
   $('te-h-'+id).value = h.toFixed(2);
   teAmt(id);
 };
 window.teAmt = function(id) {
-  const inp = $('te-h-'+id); const rate = Number(inp.dataset.rate||0);
-  $('te-amt-'+id).textContent = `(${fmtCur(Number(inp.value||0)*rate)} at ${fmtCur(rate)}/hr)`;
+  const inp = $('te-h-'+id); const rate = Number(inp.dataset.rate||0); const h = Number(inp.value||0);
+  const amt = $('te-amt-'+id); if (amt) { amt.textContent = fmtCur(h*rate); const sp = amt.nextElementSibling; if (sp) sp.textContent = `(${h.toFixed(2)} hrs at ${fmtCur(rate)}/hr)`; }
+  const btn = document.querySelector(`#te-card-${id} .btn-primary`); if (btn) btn.textContent = `Approve ${fmtCur(h*rate)}`;
 };
 
 window.approveTimeEntry = async function(id) {
@@ -3194,7 +3231,7 @@ window.approveTimeEntry = async function(id) {
   try {
     const { data: subId, error } = await sb.rpc('c_time_entry_approve', {
       p_entry_id: id, p_approved_hours: Number(h), p_admin_notes: $('te-n-'+id).value || '',
-      p_clock_in: pIn, p_clock_out: pOut, p_break_minutes: Number($('te-brk-'+id).value || 0)
+      p_clock_in: pIn, p_clock_out: pOut, p_break_minutes: 0
     });
     if (error) throw error;
     toast('Approved');
@@ -3243,8 +3280,9 @@ window.adminClockOut = async function(id) {
 };
 
 function approvalCardHtml(p) {
+  const rate = Number(p.contractor.pay_rate || 0), hrs = Number(p.submitted_hours || 0);
   return `
-    <div class="card">
+    <div class="card" id="ap-card-${p.id}">
       <div class="card-hd">
         <div>
           <h3>${esc(p.contractor.first_name||'')} ${esc(p.contractor.last_name||'')}</h3>
@@ -3254,15 +3292,22 @@ function approvalCardHtml(p) {
       </div>
       ${p.submitted_notes ? `<div class="card-body" style="font-size:.84rem;margin-bottom:8px;"><em>"${esc(p.submitted_notes)}"</em></div>` : ''}
       <div class="form-row" style="margin-bottom:8px;">
-        <div class="fg"><label>Approve hours</label><input id="ap-h-${p.id}" type="number" step="0.25" min="0" max="24" value="${p.submitted_hours}" inputmode="decimal" /></div>
+        <div class="fg"><label>Approve hours</label><input id="ap-h-${p.id}" type="number" step="0.25" min="0" max="24" value="${p.submitted_hours}" inputmode="decimal" data-rate="${rate}" oninput="apAmt('${p.id}')" /></div>
         <div class="fg"><label>Admin note (visible to contractor)</label><input id="ap-n-${p.id}" value="" placeholder="optional" /></div>
       </div>
+      <div class="payout-line">Paying out <strong id="ap-amt-${p.id}">${fmtCur(hrs*rate)}</strong> <span>(${hrs.toFixed(2)} hrs at ${fmtCur(rate)}/hr)</span></div>
       <div class="card-actions">
-        <button class="btn btn-primary btn-sm" onclick="approveSubmission('${p.id}')">Approve</button>
+        <button class="btn btn-primary btn-sm" onclick="approveSubmission('${p.id}')">Approve ${fmtCur(hrs*rate)}</button>
       </div>
     </div>
   `;
 }
+
+window.apAmt = function(id) {
+  const inp = $('ap-h-'+id); const rate = Number(inp.dataset.rate||0); const h = Number(inp.value||0);
+  const amt = $('ap-amt-'+id); if (amt) { amt.textContent = fmtCur(h*rate); const sp = amt.nextElementSibling; if (sp) sp.textContent = `(${h.toFixed(2)} hrs at ${fmtCur(rate)}/hr)`; }
+  const btn = document.querySelector(`#ap-card-${id} .btn-primary`); if (btn) btn.textContent = `Approve ${fmtCur(h*rate)}`;
+};
 
 window.approveSubmission = async function(id) {
   const h = $('ap-h-'+id).value;
@@ -4710,7 +4755,7 @@ async function renderContractorGuide() {
         <li>Check <strong>Availability</strong>: mark which weekends/weekdays you can work for the next few months.</li>
         <li>Watch <strong>Schedule</strong> for new shifts. When one shows up that you're free for, click <em>Sign up</em>.</li>
         <li>Show up and bake.</li>
-        <li>Use the <strong>Time clock</strong> on Home: clock in when you start, clock out when you finish (add any unpaid break). Forgot to clock in? Open <strong>My Shifts</strong> and <em>Submit hours</em> by hand instead, but do one or the other, not both. Admin reviews and approves.</li>
+        <li>Use the <strong>Time clock</strong> on Home: clock in when you start, clock out when you finish. Forgot to clock in? Open <strong>My Shifts</strong> and <em>Submit hours</em> by hand instead, but do one or the other, not both. Admin reviews and approves.</li>
         <li>Check <strong>Payments</strong> to see your YTD totals and when each payment lands.</li>
       </ol>
     </div>
@@ -5086,9 +5131,9 @@ async function renderAdminGuide() {
       <div class="panel-title">Your tabs</div>
       <ul style="list-style:none;padding:0;margin:0;font-size:.92rem;line-height:1.8;">
         <li><strong>📊 Dashboard</strong>: outstanding to pay (front and center), YTD totals, per-contractor table with 1099 flags and food-card expirations.</li>
-        <li><strong>🧑‍🍳 Shifts</strong>: create new bake shifts. Supports multiple start times (9 / 11 / 1) and tentative status for unconfirmed bakes. Past shifts shown for reference.</li>
+        <li><strong>🧑‍🍳 Shifts</strong>: create new bake shifts. Supports multiple start times (9 / 11 / 1) and tentative status for unconfirmed bakes. Past shifts shown for reference. <em>Cancel</em> keeps a record and emails anyone signed up; <em>Delete</em> removes the shift entirely (refused if hours on it were already paid).</li>
         <li><strong>📅 Availability</strong>: calendar heatmap. Tap any day to see which contractors are free / busy / tentative, and post a shift directly from that date.</li>
-        <li><strong>✅ Approvals</strong>: two kinds of items land here. <strong>Time clock entries</strong> (contractor clocked in and out from Home; you see the in/out times, any break, and the location if their phone shared it) and <strong>manually submitted hours</strong> (entered from My Shifts). Adjust the times or hours if needed, then approve, or reject with a note. You can also see who is on the clock right now and clock someone out if they forgot. Approved hours snapshot the pay rate at that moment, so future rate changes don't rewrite history. If there was no shift on the schedule that day, approving a time clock entry creates one automatically so Payments and YTD stay accurate.</li>
+        <li><strong>✅ Approvals</strong>: two kinds of items land here. <strong>Time clock entries</strong> (contractor clocked in and out from Home; you see the in/out times, the hours, the dollar amount you will be paying out, and the location if their phone shared it) and <strong>manually submitted hours</strong> (entered from My Shifts). Adjust the times or hours if needed, then approve, or reject with a note. You can also see who is on the clock right now and clock someone out if they forgot. Approved hours snapshot the pay rate at that moment, so future rate changes don't rewrite history. If there was no shift on the schedule that day, approving a time clock entry creates one automatically so Payments and YTD stay accurate.</li>
         <li><strong>💵 Payments</strong>: per contractor, see what they're owed and record payment (check / Venmo / Zelle / cash). Click "Pay" &rarr; check the hour records this payment covers &rarr; enter amount and method.</li>
         <li><strong>🏠 Kitchen</strong>: two things: the hours we use the Kent Denver kitchen (logged per bake at $10/hr, with what is still owed to Kent and a "Mark month paid" button), and below it the rent we collect from outside kitchen users.</li>
         <li><strong>👥 Contractors</strong>: add / edit / deactivate. Each row has a "History" button (full hours + payments timeline) and "Edit" (profile + PIN management). Use "Generate new PIN" to rotate; share PIN with contractor out of band.</li>
