@@ -1985,16 +1985,25 @@ async function timeClockCardHtml() {
   let body;
   if (open) {
     const since = new Date(open.clock_in).getTime();
+    const endMs = open.expected_end ? new Date(open.expected_end).getTime() : null;
+    const overdue = () => endMs && Date.now() > endMs;
     _clockTimer = setInterval(() => {
       const el = $('clock-elapsed');
       if (!el) { clearInterval(_clockTimer); return; }
       el.textContent = fmtElapsed(Date.now() - since);
+      const ov = $('clock-overdue');
+      if (ov && overdue() && ov.style.display === 'none') { ov.style.display = ''; clockOutNotify(open); }
     }, 1000);
+    scheduleClockOutNudge(open);
     body = `
+      <div id="clock-overdue" style="${overdue() ? '' : 'display:none;'}background:var(--accent);color:#fff;border-radius:6px;padding:10px 14px;margin-bottom:10px;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span>⏰ Your shift ended at ${endMs ? fmtClockTime(open.expected_end) : 'its scheduled time'}. Don't forget to clock out.</span>
+        <button class="btn btn-sm" style="background:#fff;color:var(--accent-dk);" onclick="clockOutPrompt('${open.id}')">Clock out</button>
+      </div>
       <div class="clock-row">
         <div>
           <div class="clock-time" id="clock-elapsed">${fmtElapsed(Date.now() - since)}</div>
-          <div class="clock-sub"><span class="clock-dot"></span>Clocked in at ${fmtClockTime(open.clock_in)}${open.shift ? ` · ${esc(open.shift.location)}` : ''}</div>
+          <div class="clock-sub"><span class="clock-dot"></span>Clocked in at ${fmtClockTime(open.clock_in)}${endMs ? ` · scheduled until ${fmtClockTime(open.expected_end)}` : ''}${open.shift ? ` · ${esc(open.shift.location)}` : ''}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn btn-primary btn-clock" onclick="clockOutPrompt('${open.id}')">Clock out</button>
@@ -2019,8 +2028,9 @@ async function timeClockCardHtml() {
           <span class="te-when">${esc(fmtDateShort(t.work_date))} · ${fmtClockTime(t.clock_in)} to ${fmtClockTime(t.clock_out)}</span>
           <span style="display:flex;gap:8px;align-items:center;">
             <span class="te-hrs">${teHoursLabel(t)}</span>${teStatusBadge(t)}
-            ${t.status === 'submitted' ? `<button class="btn btn-outline btn-sm" onclick="cancelClockIn('${t.id}')" title="Remove this entry">Remove</button>` : ''}
+            ${t.status === 'submitted' ? `<button class="btn btn-outline btn-sm" onclick="editTimeEntryPrompt('${t.id}')" title="Fix the clock-in or clock-out time">Edit times</button><button class="btn btn-outline btn-sm" onclick="cancelClockIn('${t.id}')" title="Remove this entry">Remove</button>` : ''}
           </span>
+          ${t.edited_at ? `<div style="flex-basis:100%;font-size:.78rem;color:var(--muted);">Edited by you (originally ${fmtClockTime(t.original_clock_in)} to ${fmtClockTime(t.original_clock_out)})</div>` : ''}
           ${t.admin_notes ? `<div style="flex-basis:100%;font-size:.8rem;color:var(--muted);">Note from admin: ${esc(t.admin_notes)}</div>` : ''}
         </div>`).join('')}
     </div>` : '';
@@ -2049,9 +2059,10 @@ window.clockIn = async function() {
   const btn = $('clock-in-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Clocking in...'; }
   try {
     const pos = await getPositionQuick();
-    const { error } = await sb.rpc('c_clock_in', { p_shift_id: null, p_notes: '', p_lat: pos ? pos.lat : null, p_lng: pos ? pos.lng : null });
+    const { data, error } = await sb.rpc('c_clock_in', { p_shift_id: null, p_notes: '', p_lat: pos ? pos.lat : null, p_lng: pos ? pos.lng : null });
     if (error) throw error;
-    toast('Clocked in. Have a good bake!');
+    try { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); } catch (e) {}
+    toast(data && data.expected_end ? `Clocked in. We'll remind you to clock out at ${fmtClockTime(data.expected_end)}.` : 'Clocked in. Have a good bake!');
     refreshActiveSection();
   } catch (e) {
     toast(e.message || 'Could not clock in', {error:true});
@@ -2060,16 +2071,20 @@ window.clockIn = async function() {
 };
 
 window.clockOutPrompt = function(entryId) {
+  const nowLocal = toDenverLocalInput(new Date().toISOString());
   openModal('Clock out', `
     <p style="font-size:.9rem;color:var(--muted);margin-top:0;">Your time goes to the admin for approval. Approved hours show up in Payments.</p>
+    <div class="fg"><label>Finished at</label><input id="co-when" type="datetime-local" value="${nowLocal}" max="${nowLocal}" /><div class="help">Forgot to clock out earlier? Set the time you actually finished.</div></div>
     <div class="fg"><label>Notes for admin (optional)</label><input id="co-notes" placeholder="e.g. stayed late to finish bagging" /></div>
   `, [
     { label:'Cancel' },
     { label:'Clock out', cls:'btn-primary', onClick: async () => {
         const notes = v('co-notes');
+        const whenVal = $('co-when').value;
+        const whenIso = (whenVal && whenVal !== nowLocal) ? fromDenverLocalInput(whenVal) : null;
         try {
           const pos = await getPositionQuick();
-          const { data, error } = await sb.rpc('c_clock_out', { p_entry_id: entryId, p_notes: notes || null, p_break_minutes: 0, p_lat: pos ? pos.lat : null, p_lng: pos ? pos.lng : null });
+          const { data, error } = await sb.rpc('c_clock_out', { p_entry_id: entryId, p_notes: notes || null, p_break_minutes: 0, p_lat: pos ? pos.lat : null, p_lng: pos ? pos.lng : null, p_clock_out: whenIso });
           if (error) throw error;
           closeModal();
           toast(`Clocked out: ${Number(data.worked_hours).toFixed(2)} hours sent for approval`);
@@ -2086,6 +2101,54 @@ window.clockOutPrompt = function(entryId) {
       } }
   ]);
 };
+
+window.editTimeEntryPrompt = async function(entryId) {
+  const { data: t, error } = await sb.from('c_time_entries').select('*').eq('id', entryId).single();
+  if (error || !t) { toast('Could not load entry', {error:true}); return; }
+  const nowLocal = toDenverLocalInput(new Date().toISOString());
+  openModal('Edit my times', `
+    <p style="font-size:.9rem;color:var(--muted);margin-top:0;">Went over, or clocked in late? Fix the times here before admin approves. Admin will see that you edited it.</p>
+    <div class="te-grid">
+      <div class="fg"><label>Clocked in</label><input id="et-in" type="datetime-local" value="${toDenverLocalInput(t.clock_in)}" /></div>
+      <div class="fg"><label>Clocked out</label><input id="et-out" type="datetime-local" value="${toDenverLocalInput(t.clock_out)}" max="${nowLocal}" /></div>
+    </div>
+    <div class="fg" style="margin-top:8px;"><label>Why (optional, shown to admin)</label><input id="et-note" placeholder="e.g. forgot to clock out, left at 1:00" /></div>
+  `, [
+    { label:'Cancel' },
+    { label:'Save times', cls:'btn-primary', onClick: async () => {
+        const pIn = fromDenverLocalInput($('et-in').value), pOut = fromDenverLocalInput($('et-out').value);
+        if (!pIn || !pOut) { toast('Both times are required', {error:true}); return; }
+        if (new Date(pOut) <= new Date(pIn)) { toast('Clock-out must be after clock-in', {error:true}); return; }
+        try {
+          const { data, error } = await sb.rpc('c_time_entry_edit', { p_entry_id: entryId, p_clock_in: pIn, p_clock_out: pOut, p_notes: v('et-note') || null });
+          if (error) throw error;
+          closeModal();
+          toast(`Updated: ${Number(data.worked_hours).toFixed(2)} hours`);
+          refreshActiveSection();
+        } catch (e) { toast(e.message || 'Could not save', {error:true}); }
+      } }
+  ]);
+};
+
+// Browser nudge at the scheduled end of the shift (while the portal is open or in a background tab)
+let _nudgeTimer = null;
+function scheduleClockOutNudge(open) {
+  clearTimeout(_nudgeTimer);
+  if (!open || !open.expected_end || !('Notification' in window)) return;
+  const ms = new Date(open.expected_end).getTime() - Date.now();
+  if (ms <= 0) return;
+  _nudgeTimer = setTimeout(() => clockOutNotify(open), Math.min(ms, 2147000000));
+}
+function clockOutNotify(open) {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const key = 'lfb_nudged_' + open.id;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, '1');
+    const n = new Notification('Clock out?', { body: `Your shift ended at ${fmtClockTime(open.expected_end)}. Tap to clock out.`, tag: 'lfb-clock-out' });
+    n.onclick = () => { window.focus(); showSection('c-home'); n.close(); };
+  } catch (e) {}
+}
 
 window.cancelClockIn = function(entryId) {
   openModal('Remove time entry', `<p style="margin:0;">Remove this time entry? This cannot be undone.</p>`, [
@@ -3283,7 +3346,7 @@ async function renderAdminApprovals() {
         <div class="te-list">
           ${onClock.map(t => `
             <div class="te-item">
-              <span><span class="clock-dot"></span><strong>${esc(t.contractor.first_name||'')} ${esc(t.contractor.last_name||'')}</strong> since ${fmtClockTime(t.clock_in)}${t.shift ? ` · ${esc(t.shift.location)}` : ''}</span>
+              <span><span class="clock-dot"></span><strong>${esc(t.contractor.first_name||'')} ${esc(t.contractor.last_name||'')}</strong> since ${fmtClockTime(t.clock_in)}${t.expected_end ? ` · until ${fmtClockTime(t.expected_end)}` : ''}${t.expected_end && new Date(t.expected_end) < new Date() ? ` <span class="badge b-open">past end${t.reminder_count ? ', reminded' : ''}</span>` : ''}${t.shift ? ` · ${esc(t.shift.location)}` : ''}</span>
               <span style="display:flex;gap:8px;align-items:center;">
                 <span class="te-hrs" data-te-since="${new Date(t.clock_in).getTime()}">${fmtElapsed(Date.now() - new Date(t.clock_in).getTime())}</span>
                 <button class="btn btn-outline btn-sm" onclick="adminClockOut('${t.id}')" title="Clock this person out now">Clock out</button>
@@ -3351,6 +3414,7 @@ function timeEntryCardHtml(t) {
         </div>
         <span class="badge ${long ? 'b-open' : 'b-pending'}">${hrs.toFixed(2)} hrs${long ? ' (long)' : ''}</span>
       </div>
+      ${t.edited_at ? `<div style="font-size:.8rem;color:var(--accent-dk);margin-bottom:6px;">✏️ Contractor edited their times (originally ${fmtClockTime(t.original_clock_in)} to ${fmtClockTime(t.original_clock_out)})</div>` : ''}
       ${t.notes ? `<div class="card-body" style="font-size:.84rem;margin-bottom:8px;"><em>"${esc(t.notes)}"</em></div>` : ''}
       ${(t.in_lat || t.out_lat) ? `<div style="font-size:.78rem;color:var(--muted);margin-bottom:8px;">📍 ${t.in_lat ? `<a href="https://maps.google.com/?q=${t.in_lat},${t.in_lng}" target="_blank" rel="noopener">clock-in location</a>` : ''}${t.in_lat && t.out_lat ? ' · ' : ''}${t.out_lat ? `<a href="https://maps.google.com/?q=${t.out_lat},${t.out_lng}" target="_blank" rel="noopener">clock-out location</a>` : ''}</div>` : ''}
       <div class="te-grid" style="margin-bottom:8px;">
@@ -4920,7 +4984,7 @@ async function renderContractorGuide() {
       <div class="panel-title">Every shift</div>
       <ol style="padding-left:20px;font-size:.95rem;line-height:1.9;color:var(--brown-dk);margin:0;">
         <li>Open <strong>Home</strong> and tap <strong>Clock in</strong> when you start.</li>
-        <li>Tap <strong>Clock out</strong> when you finish. Add a note if something unusual happened.</li>
+        <li>Tap <strong>Clock out</strong> when you finish. Forgot? You'll get a reminder when your shift was scheduled to end, and you can set the time you actually finished. Until admin approves, you can also fix your times with <em>Edit times</em>.</li>
         <li>Admin approves your hours. They show up in <strong>Payments</strong> with the amount you are owed.</li>
       </ol>
       <p style="font-size:.86rem;color:var(--muted);margin:10px 0 0;">Forgot to clock in? Open <strong>My Shifts</strong> and <em>Submit hours</em> by hand instead. Do one or the other, not both.</p>

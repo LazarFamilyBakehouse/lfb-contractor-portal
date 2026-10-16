@@ -31,6 +31,7 @@ const KIND: Record<string, "team" | "self" | "broadcast"> = {
   hours_submitted: "team",
   hours_approved: "self",
   kitchen_hours_reminder: "team",
+  clock_out_reminder: "self",
   availability_nudge: "self",
   shift_new: "broadcast",
   shift_released: "broadcast",
@@ -71,6 +72,8 @@ function build(event: string, p: Record<string, unknown>) {
       return { subject: `Hours approved for ${p.bake_date}`, html: wrap("Your hours were approved", `<p>Hi ${name}, your hours for <strong>${esc(p.bake_date)}</strong> were approved: <strong>${esc(p.approved_hours)} hrs × ${esc(p.pay_rate)} = ${esc(p.approved_amount)}</strong>.</p>${p.admin_notes_line ? `<p>${esc(p.admin_notes_line)}</p>` : ""}<p style="color:#7a6a58;font-size:14px;">Year to date: ${esc(p.ytd_hours)} hrs · paid ${esc(p.ytd_paid)} · pending ${esc(p.ytd_pending)}</p>`, { label: "View payments", url }) };
     case "kitchen_hours_reminder":
       return { subject: `Log the kitchen hours: ${p.bake_date}`, html: wrap("Kitchen hours to log", `<p>The bake on <strong>${esc(p.bake_date)}</strong> at ${esc(p.location)} is complete (${esc(p.workers)}), but no Kent Denver kitchen hours are logged for that day yet.</p><p>Open the <strong>Kitchen</strong> tab, click <em>Log kitchen hours</em>, and enter the hours the kitchen was in use so what we owe Kent stays current.</p>`, { label: "Open Kitchen tab", url }) };
+    case "clock_out_reminder":
+      return { subject: `Clock out? You're still clocked in since ${p.clock_in_time}`, html: wrap("Still on the clock", `<p>Hi ${name}, you clocked in at <strong>${esc(p.clock_in_time)}</strong> and your shift was scheduled to end at <strong>${esc(p.expected_end_time)}</strong>, but you're still clocked in.</p><p>If you're done, open the portal and tap <strong>Clock out</strong>. You can set the time you actually finished, so the extra minutes won't count against your hours. If you're still working, ignore this.</p>`, { label: "Clock out now", url }) };
     case "availability_nudge":
       return { subject: "Quick favor: update your availability", html: wrap("Help us plan the next bakes", `<p>Hi ${name}, your availability in the portal looks out of date. It takes a minute to mark the days you're free, and it's how we decide when to schedule bakes.</p>`, { label: "Update availability", url }) };
     case "shift_new":
@@ -90,6 +93,28 @@ Deno.serve(async (req) => {
   try {
     if (!RESEND_API_KEY) return json({ error: "RESEND_API_KEY not set" }, 500);
     const auth = req.headers.get("Authorization") || "";
+
+    // Scheduled job (pg_cron): send due clock-out reminders. No user session; the
+    // DB decides who is due, so the only possible effect is a legitimate reminder.
+    const early = await req.clone().json().catch(() => ({}));
+    if (early && early.event === "clock_out_reminder" && early.cron === true) {
+      const svc = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      const { data: due, error: dErr } = await svc.rpc("c_clock_out_reminders_due");
+      if (dErr) return json({ error: dErr.message }, 500);
+      const fmt = (ts: string) => new Date(ts).toLocaleTimeString("en-US", { timeZone: "America/Denver", hour: "numeric", minute: "2-digit" });
+      let sent = 0;
+      for (const d of (due || []) as Array<Record<string, string>>) {
+        const msg = build("clock_out_reminder", { first_name: d.first_name, clock_in_time: fmt(d.clock_in), expected_end_time: fmt(d.expected_end), portal_url: PORTAL })!;
+        const r = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + RESEND_API_KEY, "Content-Type": "application/json" },
+          body: JSON.stringify({ from: "Lazar Family Bakehouse <" + FROM_EMAIL + ">", to: [d.email], reply_to: "info@lazarfamilybakehouse.com", subject: msg.subject, html: msg.html }),
+        });
+        if (r.ok) { sent++; await svc.from("c_time_entries").update({ reminder_count: Number(d.reminder_count || 0) + 1, last_reminder_at: new Date().toISOString() }).eq("id", d.entry_id); }
+      }
+      return json({ cron: true, due: (due || []).length, sent });
+    }
+
     const sbUser = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } });
     const { data: { user }, error: uErr } = await sbUser.auth.getUser();
     if (uErr || !user) return json({ error: "not signed in" }, 401);
