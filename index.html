@@ -1051,7 +1051,7 @@ const ADMIN_SECTIONS = [
   { id:'a-availability', label:'Availability', icon:'📅' },
   { id:'a-approvals',    label:'Approvals',    icon:'✅' },
   { id:'a-payments',     label:'Payments',     icon:'💵' },
-  { id:'a-kitchenrent',  label:'Kitchen Rent', icon:'🏠' },
+  { id:'a-kitchenrent',  label:'Kitchen',      icon:'🏠' },
   { id:'a-contractors',  label:'Contractors',  icon:'👥' },
   { id:'a-contracts',    label:'Contracts',    icon:'✍️' },
   { id:'a-referrals',    label:'Referrals',    icon:'🤝' },
@@ -3556,6 +3556,7 @@ async function renderAdminContracts() {
     <div class="panel-actions" style="margin-bottom:14px;">
       <button class="btn btn-primary" onclick="openSendContractModal()">+ Send a contract</button>
       <button class="btn btn-outline" onclick="openUploadSignedContractModal()">⬆️ Upload a signed contract</button>
+      <button class="btn btn-outline" onclick="openBulkImportContractsModal()">📂 Bulk import signed PDFs</button>
       <button class="btn btn-outline" onclick="openTemplateManager()">Manage templates</button>
     </div>
     <div class="panel">
@@ -3701,6 +3702,80 @@ window.openUploadSignedContractModal = async function(contractorId) {
   ]);
 };
 
+// Admin: drop several already-signed PDFs at once. Matches each file to a
+// contractor by the name in the filename (e.g. 20260519_ICA_TaliaRichland.pdf).
+window.openBulkImportContractsModal = async function() {
+  const { data: people } = await sb.from('c_contractors').select('id,first_name,last_name,email').eq('role','contractor').order('first_name');
+  const who = people || [];
+  const norm = s => String(s||'').toLowerCase().replace(/[^a-z]/g,'');
+  const guess = (fname) => {
+    const base = fname.replace(/\.[^.]+$/,'');
+    const after = base.includes('ICA_') ? base.split('ICA_')[1] : base;
+    const key = norm(after.replace(/_?signed$/i,''));
+    let best = who.find(p => key === norm(p.first_name + p.last_name));
+    if (!best) best = who.find(p => key.startsWith(norm(p.first_name)) && key.includes(norm(p.last_name).slice(0,4)));
+    if (!best) best = who.find(p => key.includes(norm(p.first_name)) && norm(p.first_name).length > 2);
+    const m = base.match(/^(\d{4})(\d{2})(\d{2})/);
+    const date = m ? `${m[1]}-${m[2]}-${m[3]}` : todayISO();
+    return { contractorId: best ? best.id : '', date };
+  };
+  let files = [];
+  openModal('Bulk import signed contracts', `
+    <p style="font-size:.86rem;color:var(--muted);margin:0 0 10px;">Select all the signed PDFs at once. I'll match each one to a contractor from its filename; fix any that are wrong, then import. Each becomes a <strong>Signed</strong> contract with the file attached.</p>
+    <div class="fg"><label>Signed PDFs</label><input id="bi-files" type="file" accept="application/pdf" multiple /></div>
+    <div id="bi-table" style="margin-top:10px;"></div>
+    <div id="bi-progress" style="font-size:.82rem;color:var(--muted);margin-top:8px;"></div>
+  `, [
+    { label:'Cancel', cls:'btn-outline', onClick: closeModal },
+    { label:'Import all', cls:'btn-primary', onClick: async () => {
+      if (!files.length) { toast('Choose the PDFs first', {error:true}); return; }
+      const rows = files.map((f, i) => ({ file: f, cid: $(`bi-c-${i}`).value, date: $(`bi-d-${i}`).value }));
+      const bad = rows.filter(r => !r.cid);
+      if (bad.length) { toast(`${bad.length} file(s) have no contractor selected`, {error:true}); return; }
+      const btns = $('generic-modal-actions').querySelectorAll('button'); btns.forEach(b => b.disabled = true);
+      let ok = 0, fail = 0;
+      for (const r of rows) {
+        $('bi-progress').textContent = `Importing ${r.file.name}…`;
+        try {
+          const person = who.find(p => p.id === r.cid);
+          const buf = await r.file.arrayBuffer();
+          const sha = [...new Uint8Array(await crypto.subtle.digest('SHA-256', buf))].map(b => b.toString(16).padStart(2,'0')).join('');
+          const safe = r.file.name.replace(/[^\w.\-]/g,'_');
+          const path = `${r.cid}/contracts/imported-${Date.now()}-${safe}`;
+          const { error: upErr } = await sb.storage.from('contractor-documents').upload(path, r.file, { upsert:false, contentType:'application/pdf' });
+          if (upErr) throw upErr;
+          const signedAt = new Date(r.date + 'T12:00:00').toISOString();
+          const { error: insErr } = await sb.from('c_contracts').insert({
+            contractor_id: r.cid, title:'Independent Contractor Agreement',
+            body_rendered: `[Imported signed document: ${r.file.name}]\n\nThis agreement was signed outside the portal (e-signed PDF returned by email) on ${r.date} and imported by an administrator. The signed file is attached; its SHA-256 fingerprint is ${sha}.`,
+            body_sha256: sha, merge_values: { imported:true, method:'email_esign', original_filename: r.file.name },
+            status:'signed', signed_at: signedAt, signer_typed_name: `${person?.first_name||''} ${person?.last_name||''}`.trim(),
+            signer_email: person?.email || null, consent_text:'Signed outside the portal; see attached document.',
+            company_signed_at: signedAt, pdf_path: path, created_by: session.contractor.id
+          });
+          if (insErr) throw insErr;
+          await sb.from('c_documents').insert({ contractor_id: r.cid, document_type:'contract', file_path: path, file_name: r.file.name, file_size_bytes: r.file.size, mime_type:'application/pdf', uploaded_by: session.contractor.id });
+          ok++;
+        } catch (e) { fail++; console.warn('import failed', r.file.name, e); }
+      }
+      $('bi-progress').textContent = `Done: ${ok} imported${fail ? `, ${fail} failed (see console)` : ''}.`;
+      toast(`Imported ${ok} signed contract${ok===1?'':'s'}`);
+      setTimeout(() => { closeModal(); showSection('a-contracts'); }, 900);
+    }}
+  ]);
+  $('generic-modal').querySelector('.modal').classList.add('modal-wide');
+  $('bi-files').onchange = () => {
+    files = [...$('bi-files').files];
+    $('bi-table').innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>File</th><th>Contractor</th><th>Date signed</th></tr></thead><tbody>
+      ${files.map((f, i) => { const g = guess(f.name); return `<tr>
+        <td style="font-size:.8rem;">${esc(f.name)}<div style="color:var(--muted);font-size:.72rem;">${(f.size/1024).toFixed(0)} KB</div></td>
+        <td><select id="bi-c-${i}" style="font-size:.84rem;"><option value="">— pick —</option>${who.map(p => `<option value="${p.id}" ${p.id===g.contractorId?'selected':''}>${esc(p.first_name)} ${esc(p.last_name)}</option>`).join('')}</select>${g.contractorId ? '' : '<div style="color:var(--danger);font-size:.72rem;">No match: add them under Contractors first, or pick manually</div>'}</td>
+        <td><input id="bi-d-${i}" type="date" value="${g.date}" style="font-size:.84rem;" /></td>
+      </tr>`; }).join('')}
+    </tbody></table></div>`;
+  };
+};
+
 window.voidContractPrompt = function(id) {
   openModal('Void contract', `<p style="font-size:.9rem;">This withdraws the agreement before signature. The contractor will no longer be able to sign it.</p><div class="fg"><label>Reason (optional)</label><input id="ct-void-reason" /></div>`, [
     { label:'Cancel', cls:'btn-outline', onClick: closeModal },
@@ -3812,8 +3887,14 @@ async function renderAdminKitchenRent() {
     if (r.period_start >= monthStart && r.period_start < addMonthsISO(monthStart, 1)) dueThisMonth += due;
   }
 
+  const kentHtml = await renderKentKitchenPanel();
   el.innerHTML = `
-    <div class="page-h">Kitchen Rent</div>
+    <div class="page-h">Kitchen</div>
+    <div class="page-sub">Kent Denver kitchen hours we owe, and rent collected from outside users</div>
+
+    ${kentHtml}
+
+    <div class="page-h" style="font-size:1.25rem;margin-top:26px;">Rent collected</div>
     <div class="page-sub">Manual log of rent from outside kitchen users</div>
 
     ${outstanding > 0 ? `
@@ -3874,6 +3955,99 @@ async function renderAdminKitchenRent() {
     </div>
   `;
 }
+
+// ============================================================
+// ADMIN — KENT DENVER KITCHEN HOURS (what LFB pays Kent, $10/hr)
+// ============================================================
+async function renderKentKitchenPanel() {
+  const { data: rows, error } = await sb.from('c_kitchen_hours').select('*').order('use_date', { ascending:false });
+  if (error) return `<p style="font-size:.82rem;color:var(--muted);">Kitchen hours table not found. Run <code>supabase/migrations/007_import_kent_tracker.sql</code>.</p>`;
+  const all = rows || [];
+  const today = todayISO(), yearStart = today.slice(0,4)+'-01-01', monthStart = today.slice(0,7)+'-01';
+  let hrsYTD=0, owedYTD=0, unpaid=0, hrsMonth=0, owedMonth=0, hrsAll=0, owedAll=0;
+  const byMonth = {};
+  for (const r of all) {
+    const h = Number(r.hours||0), t = Number(r.total||0);
+    hrsAll += h; owedAll += t;
+    if (r.use_date >= yearStart) { hrsYTD += h; owedYTD += t; }
+    if (r.use_date >= monthStart) { hrsMonth += h; owedMonth += t; }
+    if (!r.paid) unpaid += t;
+    const k = r.use_date.slice(0,7); byMonth[k] = byMonth[k] || { hours:0, total:0, n:0, unpaid:0 };
+    byMonth[k].hours += h; byMonth[k].total += t; byMonth[k].n++; if (!r.paid) byMonth[k].unpaid += t;
+  }
+  const months = Object.keys(byMonth).sort().reverse();
+  const monthLabel = k => new Date(k+'-15T12:00:00').toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  return `
+    <div class="panel" style="border-left:4px solid var(--accent);">
+      <div class="panel-title">Kent Denver kitchen · $10 per hour</div>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="sl">Hours this month</div><div class="sv">${hrsMonth.toFixed(2)}</div><div class="sh">${fmtCur(owedMonth)}</div></div>
+        <div class="stat-card"><div class="sl">Hours ${today.slice(0,4)} YTD</div><div class="sv">${hrsYTD.toFixed(2)}</div><div class="sh">${fmtCur(owedYTD)}</div></div>
+        <div class="stat-card"><div class="sl">Not yet paid to Kent</div><div class="sv">${fmtCur(unpaid)}</div><div class="sh">${all.filter(r=>!r.paid).length} entr${all.filter(r=>!r.paid).length===1?'y':'ies'}</div></div>
+        <div class="stat-card"><div class="sl">All time</div><div class="sv">${hrsAll.toFixed(1)} h</div><div class="sh">${fmtCur(owedAll)} · ${all.length} entries</div></div>
+      </div>
+      <div class="panel-actions" style="margin:12px 0 6px;">
+        <button class="btn btn-primary" onclick="openKitchenHoursModal()">+ Log kitchen hours</button>
+        <button class="btn btn-outline" onclick="toggleKentDetail()">Show / hide all entries</button>
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Month</th><th>Bakes</th><th>Hours</th><th>Owed</th><th>Unpaid</th><th></th></tr></thead>
+        <tbody>${months.map(k => `<tr>
+          <td><strong>${esc(monthLabel(k))}</strong></td><td>${byMonth[k].n}</td><td>${byMonth[k].hours.toFixed(2)}</td><td>${fmtCur(byMonth[k].total)}</td>
+          <td>${byMonth[k].unpaid > 0 ? `<span class="badge b-warn">${fmtCur(byMonth[k].unpaid)}</span>` : '<span class="badge b-paid">paid</span>'}</td>
+          <td>${byMonth[k].unpaid > 0 ? `<button class="btn btn-outline btn-sm" onclick="markKentMonthPaid('${k}')">Mark month paid</button>` : ''}</td>
+        </tr>`).join('') || '<tr><td class="empty-row" colspan="6">No kitchen hours logged yet</td></tr>'}</tbody>
+      </table></div>
+      <div id="kent-detail" style="display:none;margin-top:12px;">
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Date</th><th>Hours</th><th>Rate</th><th>Total</th><th>Batch</th><th>Paid</th><th></th></tr></thead>
+          <tbody>${all.map(r => `<tr>
+            <td style="white-space:nowrap;">${esc(fmtDateShort(r.use_date))}</td><td>${Number(r.hours).toFixed(2)}</td><td>${fmtCur(r.rate)}</td><td>${fmtCur(r.total)}</td>
+            <td>${esc(r.batch||'—')}</td><td>${r.paid ? `<span class="badge b-paid">paid${r.paid_on ? ' '+esc(fmtDateShort(r.paid_on)) : ''}</span>` : '<span class="badge b-pending">open</span>'}</td>
+            <td style="white-space:nowrap;"><button class="btn btn-outline btn-sm" onclick="openKitchenHoursModal('${r.id}')">Edit</button> <button class="btn btn-outline btn-sm" onclick="deleteKitchenHours('${r.id}')">Delete</button></td>
+          </tr>`).join('')}</tbody>
+        </table></div>
+      </div>
+    </div>`;
+}
+window.toggleKentDetail = function() { const d = $('kent-detail'); if (d) d.style.display = d.style.display === 'none' ? 'block' : 'none'; };
+window.openKitchenHoursModal = async function(id) {
+  let row = { use_date: todayISO(), hours: '', rate: 10, batch: '', paid: false, notes: '' };
+  if (id) { const { data } = await sb.from('c_kitchen_hours').select('*').eq('id', id).single(); if (data) row = data; }
+  openModal(id ? 'Edit kitchen hours' : 'Log kitchen hours', `
+    <div class="form-row">
+      <div class="fg"><label>Date</label><input id="kh-date" type="date" value="${esc(row.use_date)}" /></div>
+      <div class="fg"><label>Hours in the kitchen</label><input id="kh-hours" type="number" step="0.25" min="0" value="${esc(row.hours)}" /></div>
+    </div>
+    <div class="form-row">
+      <div class="fg"><label>Rate ($/hr)</label><input id="kh-rate" type="number" step="0.5" min="0" value="${esc(row.rate)}" /></div>
+      <div class="fg"><label>Batch #</label><input id="kh-batch" value="${esc(row.batch||'')}" placeholder="e.g. 145" /></div>
+    </div>
+    <div class="fg"><label>Notes</label><input id="kh-notes" value="${esc(row.notes||'')}" /></div>
+    <label style="display:flex;gap:8px;align-items:center;font-size:.86rem;margin-top:8px;"><input type="checkbox" id="kh-paid" ${row.paid?'checked':''}/> Paid to Kent</label>
+  `, [
+    { label:'Cancel', cls:'btn-outline', onClick: closeModal },
+    { label:'Save', cls:'btn-primary', onClick: async () => {
+      const payload = { use_date: v('kh-date'), hours: Number(v('kh-hours')), rate: Number(v('kh-rate'))||10, batch: v('kh-batch'), notes: v('kh-notes'), paid: $('kh-paid').checked, paid_on: $('kh-paid').checked ? (row.paid_on || todayISO()) : null };
+      if (!payload.use_date || !(payload.hours >= 0)) { toast('Date and hours are required', {error:true}); return; }
+      const q = id ? sb.from('c_kitchen_hours').update(payload).eq('id', id) : sb.from('c_kitchen_hours').insert(payload);
+      const { error } = await q; if (error) { toast(error.message, {error:true}); return; }
+      toast('Saved'); closeModal(); refreshActiveSection();
+    }}
+  ]);
+};
+window.markKentMonthPaid = async function(ym) {
+  if (!confirm(`Mark all ${ym} kitchen hours as paid to Kent?`)) return;
+  const { error } = await sb.from('c_kitchen_hours').update({ paid: true, paid_on: todayISO() }).gte('use_date', ym+'-01').lt('use_date', addMonthsISO(ym+'-01', 1)).eq('paid', false);
+  if (error) { toast(error.message, {error:true}); return; }
+  toast('Marked paid'); refreshActiveSection();
+};
+window.deleteKitchenHours = async function(id) {
+  if (!confirm('Delete this kitchen hours entry?')) return;
+  const { error } = await sb.from('c_kitchen_hours').delete().eq('id', id);
+  if (error) { toast(error.message, {error:true}); return; }
+  refreshActiveSection();
+};
 
 function addMonthsISO(iso, n) {
   const [y,m,d] = iso.split('-').map(Number);
@@ -4512,7 +4686,7 @@ async function renderAdminGuide() {
         <li><strong>📅 Availability</strong> &mdash; calendar heatmap. Tap any day to see which contractors are free / busy / tentative, and post a shift directly from that date.</li>
         <li><strong>✅ Approvals</strong> &mdash; contractors submit hours after each shift; approve (and edit) here. Approved hours snapshot the pay rate at that moment, so future rate changes don't rewrite history.</li>
         <li><strong>💵 Payments</strong> &mdash; per contractor, see what they're owed and record payment (check / Venmo / Zelle / cash). Click "Pay" &rarr; check the hour records this payment covers &rarr; enter amount and method.</li>
-        <li><strong>🏠 Kitchen Rent</strong> &mdash; manual log of rent collected from outside kitchen users (sub-tenants, side bakers, food trucks). Track due, paid, outstanding per period. Use "Mark paid" to record a payment against an open entry.</li>
+        <li><strong>🏠 Kitchen</strong> &mdash; two things: the hours we use the Kent Denver kitchen (logged per bake at $10/hr, with what is still owed to Kent and a "Mark month paid" button), and below it the rent we collect from outside kitchen users.</li>
         <li><strong>👥 Contractors</strong> &mdash; add / edit / deactivate. Each row has a "History" button (full hours + payments timeline) and "Edit" (profile + PIN management). Use "Generate new PIN" to rotate; share PIN with contractor out of band.</li>
         <li><strong>🤝 Referrals</strong> &mdash; contractors can refer friends. They show up here as "new" &mdash; update status as you process each one.</li>
         <li><strong>⚙️ Settings</strong> &mdash; defaults for new shifts (location, start/end times), EmailJS configuration status, maintenance tools.</li>
