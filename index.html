@@ -1398,12 +1398,17 @@ async function loadMyHourSubmissions() {
   return data || [];
 }
 
+// active people first, inactive at the bottom, alphabetical within each group
+function sortActiveFirst(rows) {
+  const rank = r => (r.status === 'active' ? 0 : 1);
+  return (rows || []).slice().sort((a, b) => rank(a) - rank(b) || String(a.first_name||'').localeCompare(String(b.first_name||'')) || String(a.last_name||'').localeCompare(String(b.last_name||'')));
+}
 async function loadAllContractors({ activeOnly } = {}) {
   let q = sb.from('c_contractors').select('*').order('first_name');
   if (activeOnly) q = q.eq('status', 'active');
   const { data, error } = await q;
   if (error) { toast(error.message,{error:true}); return []; }
-  return data || [];
+  return sortActiveFirst(data || []);
 }
 
 async function loadYTDSummary(year) {
@@ -2814,7 +2819,7 @@ async function renderAdminDashboard() {
           <th>Name</th><th>Status</th><th>Hrs YTD</th><th>Earned</th><th>Paid</th><th>Unpaid</th><th>1099</th><th>Food card</th><th>Availability</th>
         </tr></thead>
         <tbody>
-          ${(ytd||[]).filter(r => r.contractor_id).map(r => {
+          ${sortActiveFirst((ytd||[]).filter(r => r.contractor_id)).map(r => {
             const earned = Number(r.earned_amount||0);
             const over = earned >= 600;
             const near = earned >= 500 && earned < 600;
@@ -3574,12 +3579,13 @@ async function renderAdminContractors() {
     </div>
 
     <div class="panel">
-      <div class="panel-title">All (${all.length})</div>
+      <div class="panel-title">All (${all.length}): ${all.filter(x => x.status === 'active').length} active, ${all.filter(x => x.status !== 'active').length} inactive</div>
       <div class="tbl-wrap"><table>
         <thead><tr><th>Name</th><th>PIN</th><th>Role</th><th>Status</th><th>Pay rate</th><th>Phone</th><th></th></tr></thead>
         <tbody>
-          ${all.map(c => `
-            <tr>
+          ${all.map((c, i) => `
+            ${(i > 0 && c.status !== 'active' && all[i-1].status === 'active') ? `<tr><td colspan="7" style="background:var(--cream-dk);font-size:.74rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:6px 10px;">Inactive (${all.filter(x => x.status !== 'active').length})</td></tr>` : ''}
+            <tr style="${c.status !== 'active' ? 'opacity:.6;' : ''}">
               <td><strong>${esc(c.first_name||'')} ${esc(c.last_name||'')}</strong><div style="font-size:.74rem;color:var(--muted);">${esc(c.email)}</div></td>
               <td><code style="font-family:ui-monospace,Menlo,monospace;background:var(--cream-lt);padding:2px 8px;border-radius:3px;font-size:.86rem;letter-spacing:.05em;">${esc(c.pin||'-')}</code></td>
               <td><span class="badge ${c.role==='admin'?'b-paid':'b-inactive'}">${esc(c.role)}</span></td>
