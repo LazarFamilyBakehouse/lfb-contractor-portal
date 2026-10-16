@@ -23,6 +23,7 @@ const CORS = {
 //   broadcast -> to one contractor per call (portal loops); no bcc
 const KIND: Record<string, "team" | "self" | "broadcast"> = {
   test: "self",
+  welcome: "self",
   contract_sent: "self",
   contract_signed: "team",
   contract_declined: "team",
@@ -53,6 +54,8 @@ function build(event: string, p: Record<string, unknown>) {
   switch (event) {
     case "test":
       return { subject: "Test email from the Contractor Portal", html: wrap("It works", `<p>Hi ${name}, this is a test message from the LFB Contractor Portal. Email notifications are live.</p>`, { label: "Open the portal", url }) };
+    case "welcome":
+      return { subject: "Your Lazar Family Bakehouse Contractor Portal login", html: wrap("Welcome to the Contractor Portal", `<p>Hi ${name}, here is how to sign in to the LFB Contractor Portal, where you'll see upcoming bakes, sign up for shifts, log hours and track your pay.</p><table style="border-collapse:collapse;margin:10px 0;"><tr><td style="padding:6px 14px 6px 0;color:#7a6a58;">Portal</td><td style="padding:6px 0;"><a href="${url}" style="color:#e60000;">${esc(url.replace("https://",""))}</a></td></tr><tr><td style="padding:6px 14px 6px 0;color:#7a6a58;">Email</td><td style="padding:6px 0;"><strong>${esc(p.login_email)}</strong></td></tr><tr><td style="padding:6px 14px 6px 0;color:#7a6a58;">PIN</td><td style="padding:6px 0;"><strong style="font-size:18px;letter-spacing:.15em;">${esc(p.pin)}</strong></td></tr></table><p style="color:#7a6a58;font-size:14px;">Keep this email handy; the PIN is your password. If it ever stops working, reply here and we'll reset it.</p>`, { label: "Open the portal", url }) };
     case "contract_sent":
       return { subject: `Please review and sign: ${p.contract_title}`, html: wrap("Your agreement is ready to sign", `<p>Hi ${esc(p.contractor_name || p.first_name || "there")},</p><p>Lazar Family Bakehouse has sent you the <strong>${esc(p.contract_title)}</strong> to review and sign electronically. Sign in to the Contractor Portal, open <strong>Agreements</strong>, read through it, and sign when you're ready. You'll get a PDF copy right away.</p>`, { label: "Review & sign", url }) };
     case "contract_signed":
@@ -108,6 +111,7 @@ Deno.serve(async (req) => {
       const { data: actives } = await sb.from("c_contractors").select("email").eq("status", "active");
       const allowed = new Set((actives || []).map((r: { email: string }) => String(r.email).toLowerCase()));
       if (!want) return json({ error: "to_email required" }, 400);
+      if (event === "welcome" && !isAdmin) return json({ error: "admin only" }, 403);
       if (isAdmin) {
         if (!allowed.has(want) && !TEAM.includes(want)) return json({ error: "recipient is not an active contractor" }, 400);
       } else {
@@ -116,7 +120,7 @@ Deno.serve(async (req) => {
         if (!selfOk && !broadcastOk) return json({ error: "not allowed to email that recipient" }, 403);
       }
       to = [want];
-      if (kind === "self" && event !== "test") bcc = TEAM.filter((t) => t !== want);
+      if (kind === "self" && event !== "test" && event !== "welcome") bcc = TEAM.filter((t) => t !== want);
     }
 
     const msg = build(event, body);

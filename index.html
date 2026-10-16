@@ -199,7 +199,22 @@ header {
   letter-spacing:.01em;
   line-height:1.15;
 }
-.hdr-logo { height:44px; width:auto; display:block; }
+.hdr-logo { height:38px; width:auto; display:block; }
+@media(max-width:639px){
+  header { padding:8px 12px; }
+  .hdr-text p { display:none; }
+  .hdr-user span { display:none; }
+  .portal-banner { padding:4px 8px; font-size:.64rem; }
+  .page-h { font-size:1.3rem; }
+  .panel { padding:14px; }
+  .stat-card .sv { font-size:1.35rem; }
+  .btn { min-height:44px; }
+  .panel-actions .btn, .form-actions .btn { flex:1 1 auto; }
+  .ct-doc { padding:14px; }
+  .ct-sig { max-width:100%; }
+  .modal { padding:16px 14px 20px; }
+  td, th { padding:8px 8px; font-size:.84rem; }
+}
 .hdr-text p {
   font-size:.66rem;
   letter-spacing:.14em;
@@ -223,34 +238,39 @@ header {
 }
 .btn-logout:hover { background:var(--cream-dk); color:var(--brown-dk); }
 
+/* Phones: fixed bottom tab bar with the 4 most-used tabs + "More" */
 nav {
+  position:fixed; left:0; right:0; bottom:0; z-index:60;
   background:var(--white);
-  border-bottom:1px solid var(--tan);
-  display:flex;
-  flex-wrap:wrap;              /* no sideways scrolling: wraps to extra rows */
-  justify-content:center;
-  padding:0 4px;
+  border-top:1px solid var(--tan);
+  box-shadow:0 -2px 10px rgba(45,27,14,.08);
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  padding:4px 4px calc(4px + env(safe-area-inset-bottom));
 }
 nav button {
   background:none; border:none;
   color:var(--brown);
   font-family:'Nunito',sans-serif;
-  font-size:.74rem; font-weight:400;
-  padding:8px 6px 7px;
+  font-size:.66rem; font-weight:600;
+  padding:6px 2px 4px;
   cursor:pointer;
-  border-bottom:3px solid transparent;
+  border-top:3px solid transparent;
   transition:all .15s;
-  white-space:nowrap;
-  flex:1 1 23%;                /* ~4 per row on phones */
-  max-width:140px;
-  display:flex; flex-direction:column; align-items:center; gap:1px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  display:flex; flex-direction:column; align-items:center; gap:2px;
   min-height:52px;
 }
-nav button .ni { font-size:1.15rem; line-height:1.1; }
+nav button .ni { font-size:1.25rem; line-height:1.1; }
+nav button.nav-secondary { display:none; }
+nav button.active { color:var(--accent); border-top-color:var(--accent); font-weight:700; }
+.more-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.more-grid button { background:var(--cream-lt); border:1px solid var(--tan); border-radius:8px; padding:14px 6px; font-family:'Nunito',sans-serif; font-size:.8rem; color:var(--brown-dk); cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:6px; min-height:72px; }
+.more-grid button .ni { font-size:1.5rem; }
+.more-grid button.active { border-color:var(--accent); color:var(--accent); font-weight:700; }
 nav button:hover { color:var(--brown-dk); }
-nav button.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:700; }
 
-main { padding:18px 14px 60px; max-width:1100px; margin:0 auto; flex:1; width:100%; }
+main { padding:14px 14px 96px; max-width:1100px; margin:0 auto; flex:1; width:100%; }
 .section { display:none; }
 .section.active { display:block; }
 
@@ -652,9 +672,13 @@ tbody td { padding:10px 12px; color:var(--brown-dk); vertical-align:top; }
   .hdr-text h1 { font-size:1.45rem; }
   .hdr-logo { height:56px; }
   .hdr-text p { font-size:.72rem; }
-  nav { position:sticky; top:30px; z-index:50; padding:0 12px; }
-  nav button { padding:12px 16px; font-size:.86rem; flex:0 1 auto; max-width:none; flex-direction:row; gap:6px; min-height:48px; }
+  nav { position:sticky; top:30px; bottom:auto; z-index:50; padding:0 12px; display:flex; flex-wrap:wrap; justify-content:center; border-top:none; border-bottom:1px solid var(--tan); box-shadow:none; }
+  nav button { padding:12px 16px; font-size:.86rem; flex:0 1 auto; max-width:none; flex-direction:row; gap:6px; min-height:48px; border-top:none; border-bottom:3px solid transparent; }
+  nav button.active { border-bottom-color:var(--accent); }
   nav button .ni { font-size:1rem; }
+  nav button.nav-secondary { display:flex; }
+  nav button.nav-more { display:none; }
+  main { padding-bottom:80px; }
   main { padding:24px 28px 80px; }
   .page-h { font-size:1.7rem; }
   .stats-grid { grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); }
@@ -952,8 +976,8 @@ async function signIn() {
   const err = $('login-error');
   err.textContent = '';
   const isAdmin = document.body.dataset.loginMode === 'admin';
-  const email = isAdmin ? ADMIN_LOGIN_EMAIL : v('login-email').toLowerCase();
-  const password = v('login-password');
+  const email = isAdmin ? ADMIN_LOGIN_EMAIL : v('login-email').toLowerCase().replace(/\s+/g,'');
+  const password = isAdmin ? v('login-password') : v('login-password').replace(/\s+/g,'');
   if (!email || !password) {
     err.textContent = isAdmin ? 'Enter the admin PIN.' : 'Email and PIN are required.';
     return;
@@ -962,7 +986,14 @@ async function signIn() {
   btn.textContent = 'Signing in…';
   try {
     const { data, error } = await sb.auth.signInWithPassword({ email, password });
-    if (error) throw new Error(isAdmin ? 'Incorrect admin PIN.' : 'Email or PIN is wrong. Check with admin.');
+    if (error) {
+      console.warn('signIn', error);
+      const m = String(error.message||'').toLowerCase();
+      if (m.includes('invalid login')) throw new Error(isAdmin ? 'Incorrect admin password.' : 'Email or PIN is wrong. PINs are the 6 digits your admin gave you; the email must match the one on file.');
+      if (m.includes('rate') || error.status === 429) throw new Error('Too many attempts. Wait a minute and try again.');
+      if (m.includes('fetch') || m.includes('network')) throw new Error('No connection. Check your internet and try again.');
+      throw new Error('Sign in failed: ' + (error.message || 'unknown error'));
+    }
 
     const { data: me, error: meErr } = await sb.rpc('c_me');
     if (meErr) throw meErr;
@@ -1072,12 +1103,26 @@ const CONTRACTOR_SECTIONS = [
 
 function currentSections(){ return session.role === 'admin' ? ADMIN_SECTIONS : CONTRACTOR_SECTIONS; }
 
+const PRIMARY_NAV = { admin: ['a-dashboard','a-shifts','a-approvals','a-contracts'], contractor: ['c-home','c-schedule','c-myshifts','c-payments'] };
+function navIsPrimary(id){ return (PRIMARY_NAV[session.role] || []).includes(id); }
 function buildNav() {
   const nav = $('main-nav');
-  nav.innerHTML = currentSections().map(s =>
-    `<button data-section="${s.id}" onclick="showSection('${s.id}')"><span class="ni">${s.icon}</span><span class="nl">${s.label}</span></button>`
-  ).join('');
+  const secs = currentSections();
+  const prim = secs.filter(s => navIsPrimary(s.id)), sec = secs.filter(s => !navIsPrimary(s.id));
+  // order: primary first (so the phone bar shows them), then the rest, then More
+  nav.innerHTML = prim.concat(sec).map(s =>
+    `<button data-section="${s.id}" class="${navIsPrimary(s.id) ? 'nav-primary' : 'nav-secondary'}" onclick="showSection('${s.id}')"><span class="ni">${s.icon}</span><span class="nl">${s.label}</span></button>`
+  ).join('') + `<button class="nav-more" onclick="openMoreNav()"><span class="ni">☰</span><span class="nl">More</span></button>`;
 }
+window.openMoreNav = function() {
+  const active = document.querySelector('.section.active')?.id.replace(/^sec-/,'');
+  const items = currentSections().filter(s => !navIsPrimary(s.id));
+  openModal('More', `<div class="more-grid">${items.map(s => `<button class="${s.id===active?'active':''}" onclick="closeModal(); showSection('${s.id}')"><span class="ni">${s.icon}</span><span>${esc(s.label)}</span></button>`).join('')}</div>
+    <p style="font-size:.78rem;color:var(--muted);margin-top:14px;">Signed in as <strong>${esc(session.contractor.first_name)} ${esc(session.contractor.last_name||'')}</strong> (${esc(session.role)})</p>`, [
+    { label:'Sign out', cls:'btn-outline', onClick: () => { closeModal(); signOut(); } },
+    { label:'Close', cls:'btn-primary', onClick: closeModal }
+  ]);
+};
 
 function buildContent() {
   const main = $('main-content');
@@ -1090,6 +1135,8 @@ function showSection(id) {
   const sec = $('sec-'+id);
   if (sec) sec.classList.add('active');
   const navBtn = document.querySelector(`nav button[data-section="${id}"]`);
+  const moreBtn = document.querySelector('nav button.nav-more');
+  if (moreBtn) moreBtn.classList.toggle('active', !navIsPrimary(id));
   if (navBtn) {
     navBtn.classList.add('active');
     // Scroll active nav button into view on mobile
@@ -3036,7 +3083,7 @@ async function renderAdminContractors() {
               <td>
                 <button class="btn btn-outline btn-sm" onclick="openContractorHistory('${c.id}')">History</button>
                 <button class="btn btn-outline btn-sm" onclick="openEditContractorModal('${c.id}')">Edit</button>
-                ${c.role==='contractor' ? `<button class="btn btn-outline btn-sm" onclick="openSendContractModal('${c.id}')">✍️ Contract</button>` : ''}
+                ${c.role==='contractor' ? `<button class="btn btn-outline btn-sm" onclick="openSendContractModal('${c.id}')">✍️ Contract</button> <button class="btn btn-outline btn-sm" onclick="sendLoginInfo('${c.id}')" title="Email this person their portal link, email and PIN">📧 Login info</button>` : ''}
               </td>
             </tr>
           `).join('') || '<tr><td class="empty-row" colspan="7">No contractors yet</td></tr>'}
@@ -3045,6 +3092,15 @@ async function renderAdminContractors() {
     </div>
   `;
 }
+
+window.sendLoginInfo = async function(id) {
+  const { data: c, error } = await sb.from('c_contractors').select('first_name,last_name,email,pin').eq('id', id).single();
+  if (error) { toast(error.message, {error:true}); return; }
+  if (/@pending\.lfb$/i.test(c.email)) { toast('Set a real email address first (Edit).', {error:true}); return; }
+  if (!confirm(`Email ${c.first_name} their login details (portal link, email, PIN) at ${c.email}?`)) return;
+  const r = await notify('welcome', { to_email: c.email, first_name: c.first_name, login_email: c.email, pin: c.pin, portal_url: PORTAL_URL });
+  if (r && !r.stubbed && !r.error) toast(`Login details sent to ${c.email}`); else toast('Could not send: ' + (r?.error || 'see console'), {error:true});
+};
 
 window.openAddContractorModal = function() {
   const randomPin = String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
@@ -3086,13 +3142,7 @@ window.openAddContractorModal = function() {
           role: $('ac-role').value,
           pin
         });
-        try {
-          const { error: authErr } = await sb.auth.signUp({ email, password: pin });
-          if (authErr && !String(authErr.message||'').toLowerCase().includes('already')) throw authErr;
-          toast(`Created. Login: ${email} / ${pin}`);
-        } catch (e) {
-          toast('Profile created — but login activation failed: '+(e.message||''), {error:true});
-        }
+        toast(`Created. ${email} can sign in with that PIN right away.`);
         closeModal();
         refreshActiveSection();
       } catch (e) { toast(e.message || 'Add failed', {error:true}); }
@@ -4744,42 +4794,11 @@ async function renderAdminGuide() {
 // BULK: activate logins for all contractors that don't have one
 // ============================================================
 window.activateAllLogins = async function() {
-  const { data: rows, error } = await sb.from('c_contractors')
-    .select('id, email, pin, first_name, last_name, user_id')
-    .is('user_id', null)
-    .not('email', 'is', null)
-    .not('pin', 'is', null);
+  // Logins are kept in sync by a database trigger (migration 008); this just re-runs the sync for everyone.
+  const { data, error } = await sb.rpc('c_sync_all_logins');
   if (error) { toast(error.message, {error:true}); return; }
-  if (!rows || rows.length === 0) { toast('All contractors already have logins activated'); return; }
-
-  if (!confirm(`Activate Supabase Auth logins for ${rows.length} contractor${rows.length===1?'':'s'}?\n\nEach gets a login account using their PIN as the password. They'll then be able to sign in with email + PIN.\n\nIMPORTANT: Supabase email confirmation must be OFF for instant login (Dashboard -> Authentication -> Sign In / Up -> uncheck 'Confirm email'). If it's on, contractors will get a confirmation email first.`)) return;
-
-  let ok = 0, fail = 0;
-  const failures = [];
-  for (const c of rows) {
-    try {
-      const { error: signupErr } = await sb.auth.signUp({ email: c.email, password: c.pin });
-      if (signupErr) {
-        if (String(signupErr.message||'').toLowerCase().includes('already')) {
-          ok++;  // already exists, counts as ok
-        } else {
-          throw signupErr;
-        }
-      } else {
-        ok++;
-      }
-    } catch (e) {
-      fail++;
-      failures.push(`${c.first_name||c.email}: ${e.message||e}`);
-    }
-    // Small delay between calls so Supabase doesn't rate-limit
-    await new Promise(r => setTimeout(r, 300));
-  }
-  if (fail === 0) {
-    toast(`Activated ${ok} login${ok===1?'':'s'}. Contractors can now sign in with email + PIN.`);
-  } else {
-    alert(`Done.\nSucceeded: ${ok}\nFailed: ${fail}\n\nFailures:\n${failures.join('\n')}`);
-  }
+  const missing = (data||[]).filter(r => !r.linked);
+  toast(missing.length ? `Synced. ${missing.length} still without login (missing email or PIN): ${missing.map(m=>m.first_name).join(', ')}` : `All ${(data||[]).length} contractor logins are in sync with their email + PIN.`);
   refreshActiveSection();
 };
 
