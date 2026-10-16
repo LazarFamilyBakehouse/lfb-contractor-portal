@@ -30,6 +30,7 @@ const KIND: Record<string, "team" | "self" | "broadcast"> = {
   signup_confirm: "self",
   hours_submitted: "team",
   hours_approved: "self",
+  kitchen_hours_reminder: "team",
   availability_nudge: "self",
   shift_new: "broadcast",
   shift_released: "broadcast",
@@ -68,6 +69,8 @@ function build(event: string, p: Record<string, unknown>) {
       return { subject: `Hours submitted: ${p.contractor_name}, ${p.bake_date}`, html: wrap("Hours waiting for approval", `<p><strong>${esc(p.contractor_name)}</strong> submitted <strong>${esc(p.submitted_hours)} hours</strong> for ${esc(p.bake_date)}.</p><p>Notes: ${esc(p.submitted_notes)}</p>`, { label: "Review in Approvals", url }) };
     case "hours_approved":
       return { subject: `Hours approved for ${p.bake_date}`, html: wrap("Your hours were approved", `<p>Hi ${name}, your hours for <strong>${esc(p.bake_date)}</strong> were approved: <strong>${esc(p.approved_hours)} hrs × ${esc(p.pay_rate)} = ${esc(p.approved_amount)}</strong>.</p>${p.admin_notes_line ? `<p>${esc(p.admin_notes_line)}</p>` : ""}<p style="color:#7a6a58;font-size:14px;">Year to date: ${esc(p.ytd_hours)} hrs · paid ${esc(p.ytd_paid)} · pending ${esc(p.ytd_pending)}</p>`, { label: "View payments", url }) };
+    case "kitchen_hours_reminder":
+      return { subject: `Log the kitchen hours: ${p.bake_date}`, html: wrap("Kitchen hours to log", `<p>The bake on <strong>${esc(p.bake_date)}</strong> at ${esc(p.location)} is complete (${esc(p.workers)}), but no Kent Denver kitchen hours are logged for that day yet.</p><p>Open the <strong>Kitchen</strong> tab, click <em>Log kitchen hours</em>, and enter the hours the kitchen was in use so what we owe Kent stays current.</p>`, { label: "Open Kitchen tab", url }) };
     case "availability_nudge":
       return { subject: "Quick favor: update your availability", html: wrap("Help us plan the next bakes", `<p>Hi ${name}, your availability in the portal looks out of date. It takes a minute to mark the days you're free, and it's how we decide when to schedule bakes.</p>`, { label: "Update availability", url }) };
     case "shift_new":

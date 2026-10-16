@@ -991,7 +991,9 @@ function toggleAdminLogin() {
   const hintArea   = $('login-hint-area');
   const adminBtn   = $('admin-toggle-btn');
   if (mode === 'admin') {
-    emailField.style.display = 'none';
+    emailField.style.display = '';
+    emailField.querySelector('label').textContent = 'Admin email';
+    if (!v('login-email') || !v('login-email').includes('@')) $('login-email').value = ADMIN_LOGIN_EMAIL;
     pwLabel.textContent = 'Admin PIN';
     pwInput.placeholder = 'Admin PIN';
     subtitle.textContent = 'Admin Login';
@@ -1001,6 +1003,8 @@ function toggleAdminLogin() {
     pwInput.focus();
   } else {
     emailField.style.display = '';
+    emailField.querySelector('label').textContent = 'Email or username';
+    if (v('login-email') === ADMIN_LOGIN_EMAIL) $('login-email').value = '';
     pwLabel.textContent = 'PIN';
     pwInput.placeholder = '6-digit PIN from admin';
     subtitle.textContent = 'Contractor Portal';
@@ -1016,7 +1020,7 @@ async function signIn() {
   const err = $('login-error');
   err.textContent = '';
   const isAdmin = document.body.dataset.loginMode === 'admin';
-  let email = isAdmin ? ADMIN_LOGIN_EMAIL : v('login-email').toLowerCase().replace(/\s+/g,'');
+  let email = (isAdmin ? (v('login-email') || ADMIN_LOGIN_EMAIL) : v('login-email')).toLowerCase().replace(/\s+/g,'');
   if (!isAdmin && email && !email.includes('@')) email = email + '@' + USERNAME_DOMAIN;  // short usernames map to an internal address
   const password = isAdmin ? v('login-password') : v('login-password').replace(/\s+/g,'');
   if (!email || !password) {
@@ -1111,6 +1115,37 @@ async function bootApp() {
   showSection(firstSection);
   setupRealtime();
   renderNotifBanner();
+  if (session.role === 'admin') adminHousekeeping();
+}
+
+// Runs once per admin sign-in: close out past shifts, then remind the team
+// to log the Kent kitchen hours for any completed bake that has none yet.
+async function adminHousekeeping() {
+  try {
+    await sb.rpc('c_complete_past_shifts');
+    const since = isoFromDate(new Date(Date.now() - 14*86400e3));
+    const { data: shifts } = await sb.from('c_shifts')
+      .select('id, bake_date, location, signups:c_shift_signups(status, contractor:c_contractors!contractor_id(first_name))')
+      .eq('status', 'completed').is('kitchen_reminder_sent_at', null)
+      .gte('bake_date', since).lt('bake_date', todayISO()).order('bake_date');
+    if (!shifts || !shifts.length) return;
+    const dates = [...new Set(shifts.map(s => s.bake_date))];
+    const { data: kh } = await sb.from('c_kitchen_hours').select('use_date').in('use_date', dates);
+    const logged = new Set((kh||[]).map(k => k.use_date));
+    const byDate = {};
+    shifts.forEach(s => { (byDate[s.bake_date] = byDate[s.bake_date] || []).push(s); });
+    for (const d of dates) {
+      const ids = byDate[d].map(s => s.id);
+      if (!logged.has(d)) {
+        const who = [...new Set(byDate[d].flatMap(s => (s.signups||[]).filter(x => x.status !== 'released').map(x => x.contractor && x.contractor.first_name).filter(Boolean)))];
+        await notify('kitchen_hours_reminder', {
+          to_email: ADMIN_EMAIL, bake_date: fmtDate(d), location: byDate[d][0].location,
+          workers: who.length ? who.join(', ') : 'no one signed up in the portal', portal_url: PORTAL_URL
+        });
+      }
+      await sb.from('c_shifts').update({ kitchen_reminder_sent_at: new Date().toISOString() }).in('id', ids);
+    }
+  } catch (e) { console.warn('housekeeping', e); }
 }
 
 /* ============================================================
@@ -1550,9 +1585,18 @@ async function adminSendInvite(email) {
 }
 
 async function adminUpdateContractor(id, updates) {
-  const { error } = await sb.from('c_contractors').update(updates).eq('id', id);
+  // admin edits go through a security-definer RPC: the table grants only let
+  // people change their own profile fields, not status/role/pay/email
+  const { error } = await sb.rpc('c_admin_update_contractor', { p_id: id, p_patch: updates });
   if (error) throw error;
 }
+window.setContractorStatus = async function(id, status, name) {
+  try {
+    await adminUpdateContractor(id, { status });
+    toast(`${name} is now ${status}`);
+    refreshActiveSection();
+  } catch (e) { toast(e.message || 'Update failed', {error:true}); }
+};
 
 async function adminCreateShift(shift) {
   const status = ['open','tentative','cancelled','completed'].includes(shift.status) ? shift.status : 'open';
@@ -3595,6 +3639,9 @@ async function renderAdminContractors() {
               <td>
                 <button class="btn btn-outline btn-sm" onclick="openContractorHistory('${c.id}')">History</button>
                 <button class="btn btn-outline btn-sm" onclick="openEditContractorModal('${c.id}')">Edit</button>
+                ${c.role==='contractor' ? (c.status === 'active'
+                    ? `<button class="btn btn-outline btn-sm" onclick="setContractorStatus('${c.id}','inactive','${esc(c.first_name||'')}')" title="Deactivate: keeps history, blocks login and shift emails">Deactivate</button>`
+                    : `<button class="btn btn-gold btn-sm" onclick="setContractorStatus('${c.id}','active','${esc(c.first_name||'')}')">Reactivate</button>`) : ''}
                 ${c.role==='contractor' ? `<button class="btn btn-outline btn-sm" onclick="openSendContractModal('${c.id}')">✍️ Contract</button> <button class="btn btn-outline btn-sm" onclick="sendLoginInfo('${c.id}')" title="Email this person their portal link, email and PIN">📧 Login info</button>` : ''}
               </td>
             </tr>
@@ -3672,7 +3719,7 @@ window.openEditContractorModal = async function(id) {
       <div class="fg"><label>Last name</label><input id="ec-last" value="${esc(c.last_name||'')}" /></div>
     </div>
     <div class="form-row">
-      <div class="fg"><label>Email</label><input value="${esc(c.email)}" readonly /></div>
+      <div class="fg"><label>Email (login)</label><input id="ec-email" type="email" value="${esc(c.email)}" /></div>
       <div class="fg"><label>Phone</label><input id="ec-phone" type="tel" value="${esc(c.phone||'')}" /></div>
     </div>
     <div class="form-row">
@@ -3723,6 +3770,7 @@ window.openEditContractorModal = async function(id) {
         await adminUpdateContractor(id, {
           first_name: v('ec-first'),
           last_name:  v('ec-last'),
+          email:      v('ec-email').toLowerCase(),
           phone:      v('ec-phone'),
           pay_rate:   Number(v('ec-rate'))||0,
           role:       $('ec-role').value,
