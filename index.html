@@ -929,7 +929,8 @@ function signupWindowDisplay(signup) {
   const mine = signup.chosen_start_time ? w.find(x => String(x.start).slice(0,5) === String(signup.chosen_start_time).slice(0,5)) : null;
   return fmtWindow(mine || w[0] || { start: signup.shift && signup.shift.start_time });
 }
-function todayISO(){ return new Date().toISOString().slice(0,10); }
+// "today" in Denver, not UTC (after 5-6 PM Mountain, UTC is already tomorrow)
+function todayISO(){ return new Intl.DateTimeFormat('en-CA', { timeZone:'America/Denver', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date()); }
 function isoFromDate(d){
   const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
   return `${y}-${m}-${day}`;
