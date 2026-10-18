@@ -930,6 +930,17 @@ function signupWindowDisplay(signup) {
   return fmtWindow(mine || w[0] || { start: signup.shift && signup.shift.start_time });
 }
 // "today" in Denver, not UTC (after 5-6 PM Mountain, UTC is already tomorrow)
+// Availability target: every day from today through Dec 31 of this year
+function yearEndISO(){ return todayISO().slice(0,4) + '-12-31'; }
+function daysBetweenInclusive(a, b){ return Math.max(0, Math.round((new Date(b+'T12:00:00') - new Date(a+'T12:00:00'))/86400000) + 1); }
+async function availabilityYearEndStatus(contractorId) {
+  const start = todayISO(), end = yearEndISO();
+  const total = daysBetweenInclusive(start, end);
+  const { count } = await sb.from('c_availability').select('the_date', { count:'exact', head:true })
+    .eq('contractor_id', contractorId).gte('the_date', start).lte('the_date', end);
+  const marked = Math.min(count || 0, total);
+  return { start, end, total, marked, left: total - marked };
+}
 function todayISO(){ return new Intl.DateTimeFormat('en-CA', { timeZone:'America/Denver', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date()); }
 function isoFromDate(d){
   const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
@@ -1290,11 +1301,16 @@ async function renderNotifBanner() {
     } catch (e) { /* table not migrated yet */ }
   }
 
-  // Stale availability (contractor)
+  // Availability through the end of the year (contractor)
   if (session.role === 'contractor') {
-    const last = c.availability_last_updated_at;
-    const stale = !last || (Date.now() - new Date(last).getTime() > 30*24*60*60*1000);
-    if (stale) items.push({ key:'avail-stale', type:'info', text:`Your availability looks out of date. Update it so we can plan shifts around you.` });
+    try {
+      const a = await availabilityYearEndStatus(c.id);
+      if (a.left > 0) items.push({ key:'avail-yearend', type:'info', sticky:true,
+        text: a.marked === 0
+          ? `Please mark your availability through Dec 31 so we can plan the rest of the year's bakes.`
+          : `Please finish marking your availability through Dec 31: ${a.left} day${a.left===1?'':'s'} left to fill.`,
+        action:{ label:'Mark availability', section:'c-availability' } });
+    } catch (e) {}
   }
 
   const html = items
@@ -1691,11 +1707,18 @@ async function contractorReleaseSignup(signupId) {
     // notify other active contractors
     const contractors = await loadAllContractors({ activeOnly:true });
     const others = contractors.filter(c => c.id !== session.contractor.id && c.role !== 'admin');
+    const win = signupWindowDisplay(signup);
+    notify('shift_released_team', {
+      to_email: ADMIN_EMAIL,
+      contractor_name: `${session.contractor.first_name||''} ${session.contractor.last_name||''}`.trim(),
+      bake_date: fmtDate(signup.shift.bake_date), start_time: win, location: signup.shift.location,
+      days_out: String(daysFromToday(signup.shift.bake_date)), portal_url: PORTAL_URL
+    });
     await notifyMany('shift_released', others, c => ({
       to_email:   c.email,
       first_name: c.first_name,
       bake_date:  fmtDate(signup.shift.bake_date),
-      start_time: shiftTimesDisplay(signup.shift),
+      start_time: win,
       location:   signup.shift.location,
       portal_url: PORTAL_URL
     }));
@@ -1871,7 +1894,6 @@ async function renderContractorHome() {
   if (!c.phone) missing.push('phone');
   if (!c.emergency_contact_name) missing.push('emergency contact');
   if (!c.address_line1) missing.push('address');
-  if (!c.food_handler_card_expires) missing.push('food handler card');
 
   const heroHtml = nextShift ? `
     <div class="panel" style="border-left:4px solid var(--accent);">
@@ -2418,9 +2440,23 @@ async function renderContractorAvailability() {
   _avState.data = {};
   rows.forEach(r => { _avState.data[r.the_date] = r; });
 
+  const yr = await availabilityYearEndStatus(session.contractor.id);
+  const pct = yr.total ? Math.round(yr.marked / yr.total * 100) : 100;
   el.innerHTML = `
     <div class="page-h">My Availability</div>
-    <div class="page-sub">Mark which days you're free, busy, or tentative, the more dates you fill, the better we can plan shifts around you</div>
+    <div class="page-sub">Mark every day through Dec 31 as free, busy, or tentative so we can plan the rest of the year's bakes</div>
+
+    <div class="panel" style="border-left:4px solid ${yr.left ? 'var(--warn)' : 'var(--accent)'};">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div style="font-size:.95rem;"><strong>Through Dec 31:</strong> ${yr.marked} of ${yr.total} days marked${yr.left ? ` · <span style="color:var(--accent-dk);font-weight:700;">${yr.left} left</span>` : ' · <span style="color:var(--accent-dk);font-weight:700;">all set, thank you!</span>'}</div>
+      </div>
+      <div style="height:8px;background:var(--cream-dk);border-radius:99px;margin-top:8px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:var(--accent);"></div></div>
+      ${yr.left ? `<div class="panel-actions" style="margin-top:10px;">
+        <button class="btn btn-outline btn-sm" onclick="availFillRestYearEnd('free')">Mark the rest Free</button>
+        <button class="btn btn-outline btn-sm" onclick="availFillRestYearEnd('busy')">Mark the rest Busy</button>
+      </div>
+      <p style="font-size:.78rem;color:var(--muted);margin:6px 0 0;">These only fill days you haven't marked yet. Mark your known busy days first, then use one of these for everything else.</p>` : ''}
+    </div>
 
     <div class="cal-wrap">
       <div class="cal-header">
@@ -2455,9 +2491,9 @@ async function renderContractorAvailability() {
     <div class="panel">
       <div class="panel-title">Quick presets</div>
       <div class="panel-actions">
-        <button class="btn btn-outline btn-sm" onclick="availPresetWeekendsFreeNext90()">All weekends free · next 3 months</button>
-        <button class="btn btn-outline btn-sm" onclick="availPresetWeekdaysBusy90()">All weekdays busy · next 3 months</button>
-        <button class="btn btn-danger btn-sm" onclick="availPresetClear90()">Clear next 3 months</button>
+        <button class="btn btn-outline btn-sm" onclick="availPresetWeekendsFreeNext90()">All weekends free · through Dec 31</button>
+        <button class="btn btn-outline btn-sm" onclick="availPresetWeekdaysBusy90()">All weekdays busy · through Dec 31</button>
+        <button class="btn btn-danger btn-sm" onclick="availPresetClear90()">Clear through Dec 31</button>
       </div>
       <p style="font-size:.78rem;color:var(--muted);margin-top:8px;">Presets are a fast starting point, tap individual days to fine-tune.</p>
     </div>
@@ -2551,30 +2587,36 @@ async function applyAvailability(dates, status) {
     toast(e.message || 'Update failed', {error:true});
   }
 }
+// every date from today through Dec 31 (Denver), optionally filtered by weekday
+function datesThroughYearEnd(filterFn) {
+  const out = []; const [y, m, d] = todayISO().split('-').map(Number);
+  const cur = new Date(y, m-1, d), end = new Date(y, 11, 31);
+  while (cur <= end) { if (!filterFn || filterFn(cur)) out.push(isoFromDate(cur)); cur.setDate(cur.getDate()+1); }
+  return out;
+}
 window.availPresetWeekendsFreeNext90 = async function() {
-  const dates = [];
-  const today = new Date();
-  for (let i = 0; i < 90; i++) {
-    const d = new Date(today); d.setDate(today.getDate()+i);
-    if (d.getDay() === 0 || d.getDay() === 6) dates.push(isoFromDate(d));
-  }
-  await applyAvailability(dates, 'free');
-  renderContractorAvailability();
+  await applyAvailability(datesThroughYearEnd(d => d.getDay() === 0 || d.getDay() === 6), 'free');
+  renderContractorAvailability(); renderNotifBanner();
 };
 window.availPresetWeekdaysBusy90 = async function() {
-  const dates = [];
-  const today = new Date();
-  for (let i = 0; i < 90; i++) {
-    const d = new Date(today); d.setDate(today.getDate()+i);
-    if (d.getDay() >= 1 && d.getDay() <= 5) dates.push(isoFromDate(d));
-  }
-  await applyAvailability(dates, 'busy');
-  renderContractorAvailability();
+  await applyAvailability(datesThroughYearEnd(d => d.getDay() >= 1 && d.getDay() <= 5), 'busy');
+  renderContractorAvailability(); renderNotifBanner();
+};
+window.availFillRestYearEnd = async function(status) {
+  try {
+    const { data: rows } = await sb.from('c_availability').select('the_date').eq('contractor_id', session.contractor.id).gte('the_date', todayISO()).lte('the_date', yearEndISO());
+    const have = new Set((rows||[]).map(r => r.the_date));
+    const missing = datesThroughYearEnd().filter(d => !have.has(d));
+    if (!missing.length) { toast('Everything through Dec 31 is already marked'); return; }
+    await applyAvailability(missing, status);
+    toast(`Marked ${missing.length} day${missing.length===1?'':'s'} ${status}`);
+    renderContractorAvailability(); renderNotifBanner();
+  } catch (e) { toast(e.message || 'Could not save', {error:true}); }
 };
 window.availPresetClear90 = async function() {
-  if (!confirm('Clear all availability for the next 3 months?')) return;
+  if (!confirm('Clear all of your availability through Dec 31?')) return;
   const start = todayISO();
-  const end = isoFromDate(new Date(Date.now()+90*24*60*60*1000));
+  const end = yearEndISO();
   try {
     const { error } = await sb.rpc('c_clear_availability', { p_start: start, p_end: end });
     if (error) throw error;
@@ -2865,12 +2907,15 @@ window.saveProfile = async function() {
 async function renderAdminDashboard() {
   const el = $('sec-a-dashboard');
   el.innerHTML = '<div class="page-h">Admin Dashboard</div><div class="page-sub">Loading…</div>';
-  const [ytd, pending, openShifts, timeEntries] = await Promise.all([
+  const [ytd, pending, openShifts, timeEntries, availRows] = await Promise.all([
     loadYTDSummary(),
     loadPendingApprovals(),
     loadShiftsWithCounts({ from: todayISO(), statuses: ['open'] }),
-    loadAdminTimeEntries()
+    loadAdminTimeEntries(),
+    sb.from('c_availability').select('contractor_id').gte('the_date', todayISO()).lte('the_date', yearEndISO()).range(0, 9999).then(r => r.data || [])
   ]);
+  const availTotal = daysBetweenInclusive(todayISO(), yearEndISO());
+  const availByC = {}; availRows.forEach(r => { availByC[r.contractor_id] = (availByC[r.contractor_id]||0) + 1; });
   const onClockNow = timeEntries.filter(t => t.status === 'open');
   const clockPending = timeEntries.filter(t => t.status === 'submitted').length;
   const activeContractors = (ytd||[]).filter(r => r.status === 'active');
@@ -2936,11 +2981,11 @@ async function renderAdminDashboard() {
                       ? `<span class="badge b-warn">${fmtDateShort(r.food_handler_card_expires)}</span>`
                       : esc(fmtDateShort(r.food_handler_card_expires))))
               : '-';
-            const avail = r.availability_last_updated_at
-              ? (Date.now() - new Date(r.availability_last_updated_at).getTime() > 30*86400000
-                  ? `<span class="badge b-warn">Stale</span>`
-                  : esc(fmtDateShort(r.availability_last_updated_at)))
-              : '<span class="badge b-warn">Never</span>';
+            const aMarked = Math.min(availByC[r.contractor_id] || 0, availTotal);
+            const avail = aMarked >= availTotal
+              ? '<span class="badge b-approved">Through Dec 31</span>'
+              : aMarked === 0 ? '<span class="badge b-warn">None marked</span>'
+              : `<span class="badge b-pending">${Math.round(aMarked/availTotal*100)}% to Dec 31</span>`;
             return `<tr>
               <td><strong>${esc(r.first_name||'')} ${esc(r.last_name||'')}</strong><div style="font-size:.74rem;color:var(--muted);">${esc(r.email)}</div></td>
               <td><span class="badge ${r.status==='active'?'b-active':'b-inactive'}">${esc(r.status)}</span></td>
@@ -5019,7 +5064,7 @@ async function renderContractorGuide() {
     <div class="panel">
       <div class="panel-title">Getting on the schedule</div>
       <ul style="list-style:none;padding:0;margin:0;font-size:.92rem;line-height:1.8;">
-        <li><strong>🗓️ Availability</strong>: tap future days to mark yourself Free, Busy or Tentative. This is how bakes get planned.</li>
+        <li><strong>🗓️ Availability</strong>: mark every day through Dec 31 as Free, Busy or Tentative. This is how bakes get planned.</li>
         <li><strong>📅 Schedule</strong>: open bakes with spots left. Tap <em>Sign up</em> to claim one. You get an email confirmation.</li>
         <li><strong>📋 My Shifts</strong>: what you are signed up for. Need to bow out? Tap <em>Release spot</em> as early as you can so someone else can take it.</li>
       </ul>
