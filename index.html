@@ -833,7 +833,7 @@ const EMAILJS_TEMPLATES = {
 const ADMIN_EMAIL = 'info@lazarfamilybakehouse.com'; // recipient for admin-facing emails
 const USERNAME_DOMAIN = 'contractors.lazarfamilybakehouse.com'; // "name" at the login signs in as name@<this>
 // short usernames for the admins (any other username maps to USERNAME_DOMAIN)
-const USERNAME_ALIASES = { jake: 'info@lazarfamilybakehouse.com', victoria: 'victoria@lazarfamilybakehouse.com' };
+const USERNAME_ALIASES = { jake: 'jake@contractors.lazarfamilybakehouse.com', victoria: 'victoria@lazarfamilybakehouse.com' };
 const PORTAL_URL  = (typeof window !== 'undefined' && window.location.origin.startsWith('http'))
   ? window.location.origin
   : 'https://contractors.lazarfamilybakehouse.com';
@@ -980,7 +980,7 @@ function resetInactivityTimer(){
 /* ============================================================
    AUTH
    ============================================================ */
-const ADMIN_LOGIN_EMAIL = 'info@lazarfamilybakehouse.com';
+const ADMIN_LOGIN_EMAIL = 'jake@contractors.lazarfamilybakehouse.com'; // contractor-portal admin identity (separate from the partner portal's info@ login)
 
 function toggleAdminLogin() {
   const mode = document.body.dataset.loginMode === 'admin' ? 'contractor' : 'admin';
@@ -3715,11 +3715,11 @@ async function renderAdminContractors() {
 }
 
 window.sendLoginInfo = async function(id) {
-  const { data: c, error } = await sb.from('c_contractors').select('first_name,last_name,email,pin').eq('id', id).single();
+  const { data: c, error } = await sb.from('c_contractors').select('first_name,last_name,email,login_email,pin').eq('id', id).single();
   if (error) { toast(error.message, {error:true}); return; }
   if (/@pending\.lfb$/i.test(c.email)) { toast('Set a real email address first (Edit).', {error:true}); return; }
   if (!confirm(`Email ${c.first_name} their login details (portal link, email, PIN) at ${c.email}?`)) return;
-  const r = await notify('welcome', { to_email: c.email, first_name: c.first_name, login_email: c.email, pin: c.pin, portal_url: PORTAL_URL });
+  const r = await notify('welcome', { to_email: c.email, first_name: c.first_name, login_email: c.login_email || c.email, pin: c.pin, portal_url: PORTAL_URL });
   if (r && !r.stubbed && !r.error) toast(`Login details sent to ${c.email}`); else toast('Could not send: ' + (r?.error || 'see console'), {error:true});
 };
 
