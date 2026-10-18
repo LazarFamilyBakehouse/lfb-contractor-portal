@@ -35,6 +35,7 @@ const KIND: Record<string, "team" | "self" | "broadcast"> = {
   availability_nudge: "self",
   shift_new: "broadcast",
   shift_released: "broadcast",
+  shift_released_team: "team",
   shift_cancelled: "broadcast",
 };
 
@@ -46,7 +47,7 @@ function wrap(title: string, bodyHtml: string, cta?: { label: string; url: strin
   <h2 style="margin:0 0 10px;color:#2d1b0e;">${title}</h2>
   <div style="font-size:15px;line-height:1.55;">${bodyHtml}</div>
   ${cta ? `<p style="margin:20px 0 6px;"><a href="${cta.url}" style="background:#e60000;color:#fff;text-decoration:none;padding:11px 18px;border-radius:6px;font-family:Arial,sans-serif;font-weight:bold;display:inline-block;">${esc(cta.label)}</a></p>` : ""}
-  <p style="color:#b0a08c;font-size:12px;margin-top:20px;">Lazar Family Bakehouse · ${PORTAL.replace("https://", "")}</p>
+  <p style="color:#b0a08c;font-size:12px;margin-top:20px;">Lazar Family Bakehouse · <a href="${PORTAL}" style="color:#b0a08c;">Contractor Portal</a></p>
 </div>`;
 }
 
@@ -57,7 +58,7 @@ function build(event: string, p: Record<string, unknown>) {
     case "test":
       return { subject: "Test email from the Contractor Portal", html: wrap("It works", `<p>Hi ${name}, this is a test message from the LFB Contractor Portal. Email notifications are live.</p>`, { label: "Open the portal", url }) };
     case "welcome":
-      return { subject: "Your Lazar Family Bakehouse Contractor Portal login", html: wrap("Welcome to the Contractor Portal", `<p>Hi ${name}, here is how to sign in to the LFB Contractor Portal, where you'll see upcoming bakes, sign up for shifts, log hours and track your pay.</p><table style="border-collapse:collapse;margin:10px 0;"><tr><td style="padding:6px 14px 6px 0;color:#7a6a58;">Portal</td><td style="padding:6px 0;"><a href="${url}" style="color:#e60000;">${esc(url.replace("https://",""))}</a></td></tr><tr><td style="padding:6px 14px 6px 0;color:#7a6a58;">Email</td><td style="padding:6px 0;"><strong>${esc(p.login_email)}</strong></td></tr><tr><td style="padding:6px 14px 6px 0;color:#7a6a58;">PIN</td><td style="padding:6px 0;"><strong style="font-size:18px;letter-spacing:.15em;">${esc(p.pin)}</strong></td></tr></table><p style="color:#7a6a58;font-size:14px;">Keep this email handy; the PIN is your password. If it ever stops working, reply here and we'll reset it.</p>`, { label: "Open the portal", url }) };
+      return { subject: "Your Lazar Family Bakehouse Contractor Portal login", html: wrap("Welcome to the Contractor Portal", `<p>Hi ${name}, here is how to sign in to the LFB Contractor Portal, where you'll see upcoming bakes, sign up for shifts, log hours and track your pay.</p><table style="border-collapse:collapse;margin:10px 0;"><tr><td style="padding:6px 14px 6px 0;color:#7a6a58;">Portal</td><td style="padding:6px 0;"><a href="${url}" style="color:#e60000;font-weight:bold;">LFB Contractor Portal</a></td></tr><tr><td style="padding:6px 14px 6px 0;color:#7a6a58;">Email</td><td style="padding:6px 0;"><strong>${esc(p.login_email)}</strong></td></tr><tr><td style="padding:6px 14px 6px 0;color:#7a6a58;">PIN</td><td style="padding:6px 0;"><strong style="font-size:18px;letter-spacing:.15em;">${esc(p.pin)}</strong></td></tr></table><p style="color:#7a6a58;font-size:14px;">Keep this email handy; the PIN is your password. If it ever stops working, reply here and we'll reset it.</p>`, { label: "Open the portal", url }) };
     case "contract_sent":
       return { subject: `Please review and sign: ${p.contract_title}`, html: wrap("Your agreement is ready to sign", `<p>Hi ${esc(p.contractor_name || p.first_name || "there")},</p><p>Lazar Family Bakehouse has sent you the <strong>${esc(p.contract_title)}</strong> to review and sign electronically. Sign in to the Contractor Portal, open <strong>Agreements</strong>, read through it, and sign when you're ready. You'll get a PDF copy right away.</p>`, { label: "Review & sign", url }) };
     case "contract_signed":
@@ -80,6 +81,8 @@ function build(event: string, p: Record<string, unknown>) {
       return { subject: `New bake posted: ${p.bake_date} at ${p.start_time}`, html: wrap("A new bake is open", `<p>Hi ${name}, a bake just opened on <strong>${esc(p.bake_date)}</strong> starting at <strong>${esc(p.start_time)}</strong> at ${esc(p.location)} (${esc(p.spots_total)} spot${String(p.spots_total) === "1" ? "" : "s"}).</p><p>Notes: ${esc(p.shift_notes)}</p><p>Spots are first come, first served.</p>`, { label: "Claim a spot", url }) };
     case "shift_released":
       return { subject: `A spot opened up: ${p.bake_date}`, html: wrap("A spot just opened", `<p>Hi ${name}, someone released their spot for the bake on <strong>${esc(p.bake_date)}</strong> at <strong>${esc(p.start_time)}</strong> (${esc(p.location)}). If you're free, grab it in the portal.</p>`, { label: "Claim the spot", url }) };
+    case "shift_released_team":
+      return { subject: `${p.contractor_name} released their spot: ${p.bake_date}`, html: wrap("A contractor dropped a shift", `<p><strong>${esc(p.contractor_name)}</strong> released their spot for the bake on <strong>${esc(p.bake_date)}</strong> (${esc(p.start_time)}, ${esc(p.location)}). That's ${esc(p.days_out)} day${String(p.days_out) === "1" ? "" : "s"} out.</p><p>Everyone else on the team has been emailed that the spot is open. Check the Shifts tab to see whether someone picks it up.</p>`, { label: "Open Shifts", url }) };
     case "shift_cancelled":
       return { subject: `Cancelled: bake on ${p.bake_date}`, html: wrap("Bake cancelled", `<p>Hi ${name}, the bake on <strong>${esc(p.bake_date)}</strong> at ${esc(p.location)} has been cancelled.</p>${p.cancel_reason_line ? `<p>${esc(p.cancel_reason_line)}</p>` : ""}<p>Sorry for the change. Keep an eye on the schedule for the next one.</p>`, { label: "See the schedule", url }) };
     default:
