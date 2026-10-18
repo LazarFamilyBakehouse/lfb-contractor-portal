@@ -1,0 +1,9 @@
+-- migration 016: c_contractors.login_email, a separate auth identity for the
+-- contractor-portal admin (jake@contractors.lazarfamilybakehouse.com) so the
+-- partner portal, which signs in as info@, keeps its own password.
+-- Full function bodies were applied in the SQL editor; see 008/013 for the
+-- sync function shape. Summary of changes:
+--   alter table public.c_contractors add column if not exists login_email text;
+--   c_sync_auth_login_for: auth email = coalesce(login_email, email)
+--   c_sync_auth_login_trg: also fires on login_email / user_id changes
+--   update c_contractors set login_email='jake@contractors.lazarfamilybakehouse.com', user_id=null where role='admin' and email='info@lazarfamilybakehouse.com';
