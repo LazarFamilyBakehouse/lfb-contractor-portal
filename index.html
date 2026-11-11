@@ -1617,6 +1617,22 @@ window.setContractorStatus = async function(id, status, name) {
   } catch (e) { toast(e.message || 'Update failed', {error:true}); }
 };
 
+// Team copy whenever a shift goes live (posted as open, or promoted from tentative):
+// Jake + Victoria get one summary email, separate from the contractor broadcast.
+async function notifyTeamShiftPosted(shift, notifiedCount) {
+  const me = session?.contractor || {};
+  return notify('shift_posted_team', {
+    posted_by:     `${me.first_name || 'Admin'} ${me.last_name || ''}`.trim(),
+    bake_date:     fmtDate(shift.bake_date),
+    start_time:    shiftTimesDisplay(shift),
+    location:      shift.location,
+    spots_total:   String(shift.spots_total),
+    shift_notes:   shift.notes || '(none)',
+    notified_count:String(notifiedCount),
+    portal_url:    PORTAL_URL
+  });
+}
+
 async function adminCreateShift(shift) {
   const status = ['open','tentative','cancelled','completed'].includes(shift.status) ? shift.status : 'open';
   const payload = {
@@ -1646,6 +1662,7 @@ async function adminCreateShift(shift) {
     shift_notes:data.notes || '(none)',
     portal_url: PORTAL_URL
   }));
+  await notifyTeamShiftPosted(data, others.length);
   return data;
 }
 
@@ -4990,7 +5007,7 @@ async function renderAdminSettings() {
         Status: <strong>${EMAIL_ENABLED ? '<span style="color:var(--success);">ENABLED (Resend via Supabase)</span>' : '<span style="color:var(--warn);">DISABLED (stub mode)</span>'}</strong>
       </p>
       <p style="font-size:.84rem;color:var(--muted);line-height:1.5;">
-        Emails go out from <code>orders@lazarfamilybakehouse.com</code> through the same Resend account as the partner portal. Contractor-facing emails (shift sign-up confirmations, approved hours, contracts to sign) are BCC'd to info@ and victoria@; admin alerts (hours submitted, contract signed or declined) go to both. Shift postings go to every active contractor.
+        Emails go out from <code>orders@lazarfamilybakehouse.com</code> through the same Resend account as the partner portal. Contractor-facing emails (shift sign-up confirmations, approved hours, contracts to sign) are BCC'd to info@ and victoria@; admin alerts (hours submitted, contract signed or declined) go to both. Shift postings go to every active contractor, with a summary copy to info@ and victoria@.
       </p>
       <div class="form-actions">
         <button class="btn btn-outline" onclick="sendTestEmail()">Send me a test email</button>
@@ -5446,6 +5463,7 @@ window.adminPromoteShift = async function(shiftId) {
       shift_notes:shift.notes || '(none)',
       portal_url: PORTAL_URL
     }));
+    await notifyTeamShiftPosted(shift, others.length);
     toast('Shift promoted to open, contractors notified');
     refreshActiveSection();
   } catch (e) { toast(e.message || 'Failed', {error:true}); }
