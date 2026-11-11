@@ -735,7 +735,7 @@ tbody td { padding:10px 12px; color:var(--brown-dk); vertical-align:top; }
     </div>
     <div class="login-card">
       <div class="lf" id="login-email-field">
-        <label for="login-email">Email or username</label>
+        <label for="login-email">First name or email</label>
         <input id="login-email" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" />
       </div>
       <div class="lf">
@@ -748,7 +748,7 @@ tbody td { padding:10px 12px; color:var(--brown-dk); vertical-align:top; }
         <span style="color:var(--muted);">Forgot your PIN? Ask admin to reset it.</span>
       </div>
       <div class="login-hint" id="login-first-time" style="margin-top:18px; padding-top:14px; border-top:1px solid var(--tan); line-height:1.5;">
-        First time here? Admin will share your email and PIN. Enter them above and click Sign In.
+        First time here? Sign in with your first name and the PIN admin gave you.
       </div>
     </div>
   </div>
@@ -1017,8 +1017,8 @@ function toggleAdminLogin() {
     pwInput.focus();
   } else {
     emailField.style.display = '';
-    emailField.querySelector('label').textContent = 'Email or username';
-    $('login-email').placeholder = '';
+    emailField.querySelector('label').textContent = 'First name or email';
+    $('login-email').placeholder = 'e.g. roxanne';
     pwLabel.textContent = 'PIN';
     pwInput.placeholder = '6-digit PIN from admin';
     subtitle.textContent = 'Contractor Portal';
@@ -1035,10 +1035,18 @@ async function signIn() {
   err.textContent = '';
   const isAdmin = document.body.dataset.loginMode === 'admin';
   let email = (isAdmin ? (v('login-email') || ADMIN_LOGIN_EMAIL) : v('login-email')).toLowerCase().replace(/\s+/g,'');
-  if (email && !email.includes('@')) email = USERNAME_ALIASES[email] || (email + '@' + USERNAME_DOMAIN);  // usernames: admins by alias, others map to an internal address
+  if (email && !email.includes('@')) {
+    // usernames: admins by alias; contractors by first name (looked up server-side); else an internal address
+    if (USERNAME_ALIASES[email]) email = USERNAME_ALIASES[email];
+    else {
+      let resolved = null;
+      try { const { data } = await sb.rpc('c_login_email_for_username', { p_username: email }); resolved = data || null; } catch (e) {}
+      email = resolved ? String(resolved).toLowerCase() : (email + '@' + USERNAME_DOMAIN);
+    }
+  }
   const password = isAdmin ? v('login-password') : v('login-password').replace(/\s+/g,'');
   if (!email || !password) {
-    err.textContent = isAdmin ? 'Enter your username and password.' : 'Email (or username) and PIN are required.';
+    err.textContent = isAdmin ? 'Enter your username and password.' : 'Your first name (or email) and PIN are required.';
     return;
   }
   btn.disabled = true;
@@ -1048,7 +1056,7 @@ async function signIn() {
     if (error) {
       console.warn('signIn', error);
       const m = String(error.message||'').toLowerCase();
-      if (m.includes('invalid login')) throw new Error(isAdmin ? 'Incorrect username or password.' : 'Email or PIN is wrong. PINs are the 6 digits your admin gave you; the email must match the one on file.');
+      if (m.includes('invalid login')) throw new Error(isAdmin ? 'Incorrect username or password.' : 'Name or PIN is wrong. Use your first name (or the email on file) and the 6-digit PIN your admin gave you.');
       if (m.includes('rate') || error.status === 429) throw new Error('Too many attempts. Wait a minute and try again.');
       if (m.includes('fetch') || m.includes('network')) throw new Error('No connection. Check your internet and try again.');
       throw new Error('Sign in failed: ' + (error.message || 'unknown error'));
