@@ -3622,6 +3622,9 @@ async function renderAdminPayments() {
   el.innerHTML = `
     <div class="page-h">Payments</div>
     <div class="page-sub">Per-contractor, record payments against approved hours</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:-6px 0 14px;">
+      <button class="btn btn-outline btn-sm" onclick="openAddShiftPayPicker()">+ Add shift pay for someone</button>
+    </div>
 
     <div class="panel">
       <div class="panel-title">Outstanding (${rows.length})</div>
@@ -5290,22 +5293,29 @@ window.openContractorHistory = async function(contractorId) {
   const [contractor, hours, payments] = await Promise.all([
     sb.from('c_contractors').select('*').eq('id', contractorId).single().then(r => r.data),
     sb.from('c_hour_submissions').select('*, shift:c_shifts(bake_date, location)').eq('contractor_id', contractorId).order('approved_at', { ascending: false, nullsFirst: false }),
-    sb.from('c_payments').select('*').eq('contractor_id', contractorId).order('paid_on', { ascending: false })
+    sb.from('c_payments').select('*, items:c_payment_items(hour_submission_id, amount)').eq('contractor_id', contractorId).order('paid_on', { ascending: false })
   ]);
   const hoursRows = hours.data || [];
   const payRows = payments.data || [];
+  // Wages vs. reimbursements: a payment with no hour items (expense reimbursement,
+  // bonus) is not pay for hours, so it must not count against what they earned.
+  const isReimb = p => !(p.items||[]).length;
+  const paidSubIds = new Set(payRows.flatMap(p => (p.items||[]).map(i => i.hour_submission_id)));
   const totalHours = hoursRows.reduce((s,h) => s + (h.status==='approved' ? Number(h.approved_hours||0) : 0), 0);
   const totalEarned = hoursRows.reduce((s,h) => s + (h.status==='approved' ? Number(h.approved_amount||0) : 0), 0);
-  const totalPaid = payRows.reduce((s,p) => s + Number(p.amount||0), 0);
+  const totalWages = payRows.filter(p => !isReimb(p)).reduce((s,p) => s + Number(p.amount||0), 0);
+  const totalReimb = payRows.filter(isReimb).reduce((s,p) => s + Number(p.amount||0), 0);
   const timeline = [];
   hoursRows.forEach(h => {
+    const paid = paidSubIds.has(h.id);
     timeline.push({
       date: h.approved_at || h.submitted_at,
       sortKey: h.approved_at || h.submitted_at,
       type: 'hours',
-      label: `${h.approved_hours||h.submitted_hours} hrs · ${h.shift ? fmtDateShort(h.shift.bake_date) + ' bake' : 'shift'}`,
+      label: `${h.approved_hours||h.submitted_hours} hrs · ${h.shift ? fmtDateShort(h.shift.bake_date) + ' bake' : 'shift'}${h.admin_notes ? ' · ' + h.admin_notes : ''}`,
       amount: h.status==='approved' ? Number(h.approved_amount||0) : null,
-      status: h.status
+      status: h.status,
+      editId: (h.status==='approved' && !paid) ? h.id : null
     });
   });
   payRows.forEach(p => {
@@ -5313,33 +5323,37 @@ window.openContractorHistory = async function(contractorId) {
       date: p.paid_on,
       sortKey: p.paid_on + 'T23:00:00',
       type: 'payment',
-      label: `Paid · ${p.method}${p.reference ? ' · ' + p.reference : ''}`,
+      label: `${isReimb(p) ? 'Reimbursed' : 'Paid'} · ${p.method}${p.reference ? ' · ' + p.reference : ''}${isReimb(p) && p.notes ? ' · ' + p.notes.replace(/^BACKFILL:\s*/,'') : ''}`,
       amount: -Number(p.amount||0),
-      status: 'paid'
+      status: isReimb(p) ? 'reimbursed' : 'paid'
     });
   });
   timeline.sort((a,b) => (b.sortKey||'').localeCompare(a.sortKey||''));
+  const diff = totalEarned - totalWages;
 
   openModal(`${contractor.first_name||''} ${contractor.last_name||''}, Full history`, `
     <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">
       <div class="stat-card" style="border-top-color:var(--accent);"><div class="sl">Total hours</div><div class="sv">${totalHours.toFixed(1)}</div></div>
       <div class="stat-card" style="border-top-color:var(--accent);"><div class="sl">Total earned</div><div class="sv">${fmtCur(totalEarned)}</div></div>
-      <div class="stat-card" style="border-top-color:var(--accent);"><div class="sl">Total paid</div><div class="sv">${fmtCur(totalPaid)}</div></div>
+      <div class="stat-card" style="border-top-color:var(--accent);"><div class="sl">Wages paid</div><div class="sv">${fmtCur(totalWages)}</div>${totalReimb > 0 ? `<div style="font-size:.74rem;color:var(--muted);margin-top:2px;">+ ${fmtCur(totalReimb)} expenses reimbursed</div>` : ''}</div>
     </div>
-    ${Math.abs(totalEarned - totalPaid) > 0.01 ? `
-      <p style="font-size:.84rem;color:${totalEarned > totalPaid ? 'var(--danger)' : 'var(--muted)'};">
-        ${totalEarned > totalPaid ? `Currently owed: <strong>${fmtCur(totalEarned - totalPaid)}</strong>` : `Overpaid by: ${fmtCur(totalPaid - totalEarned)}`}
+    ${Math.abs(diff) > 0.99 ? `
+      <p style="font-size:.84rem;color:${diff > 0 ? 'var(--danger)' : 'var(--muted)'};">
+        ${diff > 0 ? `Currently owed: <strong>${fmtCur(diff)}</strong>` : `Overpaid by: ${fmtCur(-diff)}`}
       </p>
-    ` : ''}
-    <div style="font-weight:700;font-size:.76rem;text-transform:uppercase;letter-spacing:.08em;color:var(--brown-dk);margin:14px 0 6px;">Timeline</div>
+    ` : (Math.abs(diff) > 0.01 ? `<p style="font-size:.78rem;color:var(--muted);">Earned and paid differ by ${fmtCur(Math.abs(diff))} (rounding on imported hours).</p>` : '')}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 6px;gap:10px;flex-wrap:wrap;">
+      <div style="font-weight:700;font-size:.76rem;text-transform:uppercase;letter-spacing:.08em;color:var(--brown-dk);">Timeline</div>
+      <button class="btn btn-outline btn-sm" onclick="openAddShiftPay('${contractorId}')">+ Add shift pay</button>
+    </div>
     ${timeline.length === 0 ? '<p style="color:var(--muted);font-size:.9rem;">No history yet.</p>' : `
       <div style="max-height:50vh;overflow-y:auto;border:1px solid var(--tan);border-radius:4px;">
         ${timeline.map(t => `
           <div style="padding:8px 12px;border-bottom:1px solid var(--cream-dk);display:flex;align-items:center;gap:10px;font-size:.86rem;">
             <span style="min-width:80px;color:var(--muted);font-size:.78rem;">${esc(fmtDateShort(t.date))}</span>
-            <span style="flex:1;color:var(--brown-dk);">${esc(t.label)}</span>
+            <span style="flex:1;color:var(--brown-dk);">${esc(t.label)}${t.editId ? ` <a href="#" onclick="event.preventDefault();openEditShiftPay('${t.editId}','${contractorId}')" style="color:var(--accent-dk);font-size:.78rem;margin-left:6px;">Edit</a>` : ''}</span>
             ${t.amount !== null ? `<span style="font-weight:700;color:${t.amount < 0 ? 'var(--accent-dk)' : 'var(--brown-dk)'};min-width:90px;text-align:right;">${t.amount < 0 ? '-' : ''}${fmtCur(Math.abs(t.amount))}</span>` : '<span></span>'}
-            <span style="min-width:80px;text-align:right;"><span class="badge b-${t.status==='paid'?'paid':t.status==='approved'?'approved':'pending'}" style="font-size:.66rem;">${esc(t.status)}</span></span>
+            <span style="min-width:80px;text-align:right;"><span class="badge b-${t.status==='paid'||t.status==='reimbursed'?'paid':t.status==='approved'?'approved':'pending'}" style="font-size:.66rem;">${esc(t.status)}</span></span>
           </div>
         `).join('')}
       </div>
@@ -5348,6 +5362,72 @@ window.openContractorHistory = async function(contractorId) {
     { label:'Close', cls:'btn-outline', onClick: closeModal },
     { label:'Edit contractor', cls:'btn-primary', onClick: () => { closeModal(); openEditContractorModal(contractorId); }}
   ]);
+};
+
+// ---- Admin: add a shift payment by hand, or edit one that is not paid yet ----
+function shiftPayFormHtml(opts) {
+  const o = opts || {};
+  return `
+    ${o.whoHtml || ''}
+    <div class="form-row">
+      ${o.showDate ? `<div class="fg"><label>Shift date</label><input id="sp-date" type="date" value="${esc(o.date || todayISO())}" /></div>` : ''}
+      <div class="fg"><label>Hours</label><input id="sp-hours" type="number" step="0.01" min="0" max="24" value="${o.hours != null ? o.hours : ''}" inputmode="decimal" oninput="spSyncAmount()" /></div>
+      <div class="fg"><label>Amount paid out</label><input id="sp-amount" type="number" step="0.01" min="0" value="${o.amount != null ? Number(o.amount).toFixed(2) : ''}" inputmode="decimal" oninput="document.getElementById('sp-amount').dataset.touched='1'" /></div>
+    </div>
+    <p style="font-size:.78rem;color:var(--muted);margin:2px 0 10px;">Amount fills in as hours × ${fmtCur(o.rate || 0)}/hr. Change it to pay a flat amount for the shift.</p>
+    <div class="fg"><label>Note (optional)</label><input id="sp-notes" type="text" maxlength="120" value="${esc(o.notes || '')}" placeholder="e.g. Flat rate for delivery run" /></div>
+  `;
+}
+window.spSyncAmount = function() {
+  const amt = $('sp-amount'); if (!amt || amt.dataset.touched === '1') return;
+  const h = parseFloat($('sp-hours').value) || 0; const r = parseFloat(amt.dataset.rate) || 0;
+  amt.value = (h * r).toFixed(2);
+};
+window.openAddShiftPayPicker = async function() {
+  const who = (await loadAllContractors({ activeOnly:true })).filter(c => c.role === 'contractor');
+  openModal('Add shift pay', `
+    <div class="fg"><label>Contractor</label><select id="sp-who">${who.map(c => `<option value="${c.id}">${esc(c.first_name)} ${esc(c.last_name||'')}</option>`).join('')}</select></div>
+  `, [
+    { label:'Cancel', cls:'btn-outline', onClick: closeModal },
+    { label:'Next', cls:'btn-primary', onClick: () => openAddShiftPay(v('sp-who')) }
+  ]);
+};
+window.openAddShiftPay = async function(contractorId) {
+  const { data: c } = await sb.from('c_contractors').select('id, first_name, last_name, pay_rate').eq('id', contractorId).single();
+  if (!c) { toast('Contractor not found', {error:true}); return; }
+  openModal(`Add shift pay for ${c.first_name} ${c.last_name||''}`, shiftPayFormHtml({ showDate:true, rate:c.pay_rate,
+    whoHtml:`<p style="font-size:.86rem;color:var(--muted);margin-bottom:10px;">Adds an approved shift so it shows up under Payments as owed. Use this for work that was not clocked in.</p>` }), [
+    { label:'Cancel', cls:'btn-outline', onClick: () => openContractorHistory(contractorId) },
+    { label:'Add shift pay', cls:'btn-primary', onClick: async () => {
+      const hours = parseFloat(v('sp-hours')); const amount = parseFloat(v('sp-amount'));
+      if (!(hours > 0)) { toast('Enter the hours worked', {error:true}); return; }
+      const { error } = await sb.rpc('c_admin_add_shift_pay', { p_contractor_id: contractorId, p_date: v('sp-date'), p_hours: hours,
+        p_amount: ($('sp-amount').dataset.touched === '1' && !isNaN(amount)) ? amount : null, p_notes: v('sp-notes') });
+      if (error) { toast(error.message, {error:true}); return; }
+      toast('Shift pay added');
+      refreshActiveSection();
+      openContractorHistory(contractorId);
+    }}
+  ]);
+  $('sp-amount').dataset.rate = c.pay_rate || 0; spSyncAmount();
+};
+window.openEditShiftPay = async function(submissionId, contractorId) {
+  const { data: h } = await sb.from('c_hour_submissions').select('*, shift:c_shifts(bake_date), contractor:c_contractors!contractor_id(first_name, last_name, pay_rate)').eq('id', submissionId).single();
+  if (!h) { toast('Entry not found', {error:true}); return; }
+  openModal(`Edit shift pay · ${fmtDateShort(h.shift?.bake_date)}`, shiftPayFormHtml({ hours:h.approved_hours, amount:h.approved_amount, notes:h.admin_notes, rate:h.contractor?.pay_rate,
+    whoHtml:`<p style="font-size:.86rem;color:var(--muted);margin-bottom:10px;"><strong>${esc(h.contractor?.first_name||'')} ${esc(h.contractor?.last_name||'')}</strong> · not paid yet, so hours and amount can still be changed.</p>` }), [
+    { label:'Cancel', cls:'btn-outline', onClick: () => openContractorHistory(contractorId) },
+    { label:'Save changes', cls:'btn-primary', onClick: async () => {
+      const hours = parseFloat(v('sp-hours')); const amount = parseFloat(v('sp-amount'));
+      if (!(hours > 0)) { toast('Enter the hours worked', {error:true}); return; }
+      const { error } = await sb.rpc('c_admin_edit_shift_pay', { p_submission_id: submissionId, p_hours: hours, p_amount: isNaN(amount) ? null : amount, p_notes: v('sp-notes') });
+      if (error) { toast(error.message, {error:true}); return; }
+      toast('Shift pay updated');
+      refreshActiveSection();
+      openContractorHistory(contractorId);
+    }}
+  ]);
+  $('sp-amount').dataset.rate = h.contractor?.pay_rate || 0; $('sp-amount').dataset.touched = '1';
 };
 
 // ============================================================
